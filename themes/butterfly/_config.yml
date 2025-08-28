@@ -18,11 +18,12 @@ nav:
   fixed: false
 
 menu:
-  Home: / || fas fa-home
-  Test: /test/ || fas fa-file
-  List||fas fa-list:
-    Music: /music/ || fas fa-music
-    Movie: /movies/ || fas fa-video
+  主页: / || fas fa-home
+  ACG: /categories/acg/ || fas fa-dragon
+  生活: /categories/life/ || fas fa-coffee
+  数学: /categories/math/ || fas fa-square-root-alt
+  开发: /categories/dev/ || fas fa-code
+  关于: /about/ || fas fa-user
 
 # --------------------------------------
 # Code Blocks Settings
@@ -57,7 +58,7 @@ social:
 favicon: /img/favicon.png
 
 avatar:
-  img: /img/butterfly-icon.png
+  img: /img/avatar.jpg
   effect: false
 
 # Disable all banner images
@@ -289,10 +290,10 @@ aside:
       enable: true
       icon: fab fa-github
       text: Follow Me
-      link: https://github.com/xxxxxx
+      link: https://github.com/lamperriat
   card_announcement:
     enable: true
-    content: This is my Blog
+    content: 欢迎来到我的博客！可以在上方导航切换到感兴趣的栏目。另外，由于ICP原因暂时没有迁移回国内的云服务器，目前无法墙内访问(ó﹏ò｡)。
   card_recent_post:
     enable: true
     # If set 0 will show all
@@ -1120,3 +1121,20 @@ CDN:
     # valine:
     # waline_css:
     # waline_js:
+
+
+# added
+# Category metadata mapping  
+category_meta:  
+  "dev":  
+    display_name: "开发"  
+    description: "软件工程、web开发、编程、网络安全等计算机相关领域相关的博客。"
+  "math":  
+    display_name: "数学"  
+    description: "虽然本人并非数学专业，也谈不上对数学有多深入的理解，但还是希望分享一些可能无用但勉强还算有趣的数学笔记。"
+  "life": 
+    display_name: "日常"  
+    description: "约等于朋友圈。分享食谱，生活日常等。"
+  "acg": 
+    display_name: "ACG"
+    description: "ACG相关内容，如动漫游戏的安利和简评等。请放心，含剧透的博客会在标题注明。"
