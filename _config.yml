@@ -114,7 +114,7 @@ markdown:
     # - markdown-it-sub
     # - markdown-it-abbr
     - markdown-it-emoji
-    - markdown-it-checkbox # tasklist
+    # - markdown-it-checkbox # tasklist
     - plugin: # Katex
       name: '@renbaoshuo/markdown-it-katex'
       options:
@@ -147,3 +147,9 @@ deploy:
   repo: git@github.com:lamperriat/lamperriat.github.io.git
   branch: main
   message: "chore: site updated at {{ now('YYYY-MM-DD HH:mm:ss') }}"
+
+search:
+  path: search.json
+  field: post
+  content: true
+  format: striptags

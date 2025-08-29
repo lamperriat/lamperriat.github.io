@@ -474,8 +474,8 @@ math:
 search:
   # Choose: algolia_search / local_search / docsearch
   # leave it empty if you don't need search
-  use:
-  placeholder:
+  use: local_search 
+  placeholder: "Search in this website"
 
   # Algolia Search
   algolia_search:
