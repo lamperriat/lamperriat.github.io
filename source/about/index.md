@@ -14,6 +14,6 @@ date: 2025-08-26 12:25:04
 * 如果发现内容有错误欢迎email我(qz_sun@mail.sjtu.edu.cn)或在评论区指出(接入gitcus后)
 
 更新计划：
-* 接入gitcus评论区
+* 接入giscus评论区
 * 移植旧笔记
 * 给博客贴tag
