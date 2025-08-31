@@ -1,10 +1,12 @@
 ---
 title: 'Notes: Introduction to Algorithms (English)'
 date: 2025-08-30 11:34:08
-tags: 
+categories: 
     - dev
     - notes
 ---
+
+*本篇为课程笔记，仅供参考*
 
 # Basics on Algo
 

@@ -4,6 +4,8 @@ date: 2025-08-28 12:58:14
 categories: math
 ---
 
+*本篇为课程笔记，仅供参考*
+
 ### Elementary Probability
 
 **Def**: Set $A$ is *countable* if $A$ is finite or there exists a bijection from $\mathbb N$ to $A$.

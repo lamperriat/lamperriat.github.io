@@ -1,10 +1,13 @@
 ---
 title: 'Notes: Introduction to Operating Systems (English)'
 date: 2025-08-30 11:35:12
-tags:
+categories:
     - dev
     - notes
 ---
+
+
+*本篇为课程笔记，仅供参考*
 
 # ECE482
 
