@@ -6,7 +6,7 @@ tags:
 
 
 ### 教程
-实际上网上能找到的相关教程很少，因为一般来说希望用clangd就得下UE的源码，然后手动编译，手动配vscode，非常麻烦。但[boocs](https://github.com/boocs/)感谢写的插件[unreal clangd](https://github.com/boocs/unreal-clangd)，以上操作都变得十分简单。
+实际上网上能找到的相关教程很少，因为一般来说希望用clangd就得下UE的源码，然后手动编译，手动配vscode，非常麻烦。但感谢[boocs](https://github.com/boocs/)写的插件[unreal clangd](https://github.com/boocs/unreal-clangd)，以上操作都变得十分简单。
 
 视频教程: https://b23.tv/5gm84vH
 

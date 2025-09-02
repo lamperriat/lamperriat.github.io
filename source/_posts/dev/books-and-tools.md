@@ -22,4 +22,3 @@ categories:
 ### 工具 - 生活
 * [TrackWeight](https://github.com/KrishKrosh/TrackWeight): 用mac的触控板当电子秤使用。实测误差大小在烹饪时基本可以忽略，还是比较好用的。
 * [HumanSystemOptimization](https://github.com/zijie0/HumanSystemOptimization)和[HowToLiveLonger](https://github.com/geekan/HowToLiveLonger): 程序员延寿指南
-* 
