@@ -1,7 +1,9 @@
 ---
 title: WireguardVPN简单搭建指南
 date: 2025-09-02 23:00:42
-tags:
+categories: 
+    - dev
+    - tools
 ---
 
 ### 前言
