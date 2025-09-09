@@ -10,6 +10,7 @@ categories:
 * [DeepWiki](https://deepwiki.com): 让大模型阅读github源码库
 * [clangd](https://clangd.llvm.org/): llvm工具链中的语言服务器，效率很高，C/C++开发时远比VSCode的C/C++插件好用
 * [marktext](https://github.com/marktext/marktext): 类typora的markdown编辑器，但是开源
+* (VSCode插件)markdown editor: 类typora(即WYSIWYG形式)的markdown编辑插件，也开源
 * [gemini-cli](https://github.com/google-gemini/gemini-cli): 虽然已经很火了，不过似乎大部分人还都只是听过而没用过。我个人非常非常喜欢gemini cli的设计，作为一个cli设计堪称完美。而且超高的限额基本约等于一直免费用gemini2.5 pro。Google真是一如既往对用户良心啊。
 
 ### 工具 - shell
