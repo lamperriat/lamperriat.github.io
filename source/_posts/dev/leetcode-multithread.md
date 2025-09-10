@@ -78,3 +78,92 @@ public:
     }
 };
 ```
+
+
+### 1115.交替打印
+题干:
+给你一个类：
+
+class FooBar {
+  public void foo() {
+    for (int i = 0; i < n; i++) {
+      print("foo");
+    }
+  }
+
+  public void bar() {
+    for (int i = 0; i < n; i++) {
+      print("bar");
+    }
+  }
+}
+两个不同的线程将会共用一个 FooBar 实例：
+
+线程 A 将会调用 foo() 方法，而
+线程 B 将会调用 bar() 方法
+请设计修改程序，以确保 "foobar" 被输出 n 次。
+
+这个题很简单，没什么说法，直接上代码
+```cpp
+class FooBar {
+private:
+    int n;
+    std::binary_semaphore foo_done;
+    std::binary_semaphore bar_done;
+public:
+    FooBar(int n) : foo_done(0), bar_done(1) {
+        this->n = n;
+    }
+
+    void foo(function<void()> printFoo) {
+        for (int i = 0; i < n; i++) {
+            bar_done.acquire();
+        	printFoo();
+            foo_done.release();
+        }
+    }
+
+    void bar(function<void()> printBar) {
+        for (int i = 0; i < n; i++) {
+            foo_done.acquire();
+        	printBar();
+            bar_done.release();
+        }
+    }
+};
+```
+
+当然，Go语言的channel非常适合这个场景
+```go
+type FooBar struct {
+	n int
+    fooDone chan struct{}
+    barDone chan struct{}
+}
+
+func NewFooBar(n int) *FooBar {
+	fb := &FooBar{
+        n: n,
+        fooDone: make(chan struct{}, 1),
+        barDone: make(chan struct{}, 1),
+    }
+    fb.barDone <- struct{}{}
+    return fb
+}
+
+func (fb *FooBar) Foo(printFoo func()) {
+	for i := 0; i < fb.n; i++ {
+        <-fb.barDone
+        printFoo()
+        fb.fooDone <- struct{}{}
+	}
+}
+
+func (fb *FooBar) Bar(printBar func()) {
+	for i := 0; i < fb.n; i++ {
+		<-fb.fooDone
+        printBar()
+        fb.barDone <- struct{}{}
+	}
+}
+```
