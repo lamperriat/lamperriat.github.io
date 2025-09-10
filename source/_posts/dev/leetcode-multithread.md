@@ -84,6 +84,7 @@ public:
 题干:
 给你一个类：
 
+```java
 class FooBar {
   public void foo() {
     for (int i = 0; i < n; i++) {
@@ -97,6 +98,8 @@ class FooBar {
     }
   }
 }
+```
+
 两个不同的线程将会共用一个 FooBar 实例：
 
 线程 A 将会调用 foo() 方法，而
