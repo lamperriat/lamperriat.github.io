@@ -24,6 +24,7 @@ menu:
   数学: /categories/math/ || fas fa-square-root-alt
   开发: /categories/dev/ || fas fa-code
   关于: /about/ || fas fa-user
+  友链: /links/ || fas fa-link
 
 # --------------------------------------
 # Code Blocks Settings
