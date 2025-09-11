@@ -170,3 +170,56 @@ func (fb *FooBar) Bar(printBar func()) {
 	}
 }
 ```
+
+### 1116.打印零与奇偶数
+题干:
+三个线程
+* 线程 A：调用 `zero()` ，只输出 0
+* 线程 B：调用 `even()` ，只输出偶数
+* 线程 C：调用 `odd()` ，只输出奇数
+
+打印出`0102...0n`序列。
+
+这个题也很简单，`zero`根据迭代次数通知`odd`或`even`打印，然后`odd`/`even`回头再通知zero即可
+```cpp
+class ZeroEvenOdd {
+private:
+    int n;
+    std::binary_semaphore zeroReady;
+    std::binary_semaphore evenReady;
+    std::binary_semaphore oddReady;
+
+public:
+    ZeroEvenOdd(int n) : zeroReady(1), evenReady(0), oddReady(0) {
+        this->n = n;
+    }
+
+    void zero(function<void(int)> printNumber) {
+        for (int i = 0; i < n; i++) {
+            zeroReady.acquire();
+            printNumber(0);
+            if (i % 2 == 1) {
+                evenReady.release();
+            } else {
+                oddReady.release();
+            }
+        }
+    }
+
+    void even(function<void(int)> printNumber) {
+        for (int turn = 2; turn <= n; turn += 2) {
+            evenReady.acquire();
+            printNumber(turn);
+            zeroReady.release();
+        }
+    }
+
+    void odd(function<void(int)> printNumber) {
+        for (int turn = 1; turn <= n; turn += 2){
+            oddReady.acquire();
+            printNumber(turn);
+            zeroReady.release();   
+        }
+    }
+};
+```
