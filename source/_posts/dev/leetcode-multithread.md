@@ -223,3 +223,95 @@ public:
     }
 };
 ```
+
+#### 1117.H2O生成
+题干: (个人觉得本题题干表述不清)
+现在有两种线程，氧 `oxygen` 和氢 `hydrogen` ，你的目标是组织这两种线程来产生水分子。
+
+存在一个屏障（barrier）使得每个线程必须等候直到一个完整水分子能够被产生出来。
+
+氢和氧线程会被分别给予 `releaseHydrogen` 和 `releaseOxygen` 方法来允许它们突破屏障。
+
+这些线程应该三三成组突破屏障并能立即组合产生一个水分子。
+
+你必须保证产生一个水分子所需线程的结合必须发生在下一个水分子产生之前。
+
+换句话说:
+* 如果一个氧线程到达屏障时没有氢线程到达，它必须等候直到两个氢线程到达。
+* 如果一个氢线程到达屏障时没有其它线程到达，它必须等候直到一个氧线程和另一个氢线程到达。
+
+---
+
+我一开始以为会这样调用
+```cpp
+H2O h;
+int n = 10;
+std::thread t1([&h, n]() {
+    for (int i = 0; i < n; i++)
+        h.hydrogen([]() { printf("H"); });
+});
+std::thread t2([&h, n]() {
+    for (int i = 0; i < n; i++)
+        h.hydrogen([]() { printf("H"); });
+});
+std::thread t3([&h, n]() {
+    for (int i = 0; i < n; i++)
+        h.hydrogen([]() { printf("O"); });
+});
+
+t1.join();
+t2.join();
+t3.join();
+```
+
+那题目都说barrier了，那就直接用`std::barrier`
+```cpp
+class H2O {
+    std::barrier<> ready;
+public:
+    H2O() : ready(3) {}
+
+    void hydrogen(std::function<void()> releaseHydrogen) {
+        releaseHydrogen();
+        ready.arrive_and_wait();
+    }
+
+    void oxygen(std::function<void()> releaseOxygen) {
+        releaseOxygen();
+        ready.arrive_and_wait();
+    }
+};
+```
+
+然后就WA了，显然leetcode并不是如我想的那样开三个线程...(本机跑了下代码本身是没问题的)
+
+那就还是用semaphore吧，也很简单，hydrogen调用用一个`std::atomic_int`计数，到2的时候通知oxygen。不过这个很显然不是最优解，实际上即使hydrogen还没ready也不影响oxygen
+
+```cpp
+class H2O {
+    std::counting_semaphore<3> hReady;
+    std::atomic_int hReadyCnt;
+    std::binary_semaphore oReady;
+public:
+    H2O() : hReady(2), oReady(0), hReadyCnt(0) {}
+
+    void hydrogen(std::function<void()> releaseHydrogen) {
+        hReady.acquire();
+        hReadyCnt++;
+        releaseHydrogen();
+        if (hReadyCnt == 2) {
+            oReady.release();
+            hReadyCnt = 0;
+        }
+    }
+
+    void oxygen(std::function<void()> releaseOxygen) {
+        oReady.acquire();
+        releaseOxygen();
+        hReady.release(2);
+    }
+};
+```
+
+不过由于不知道leetcode到底怎么调用的，暂时就不再优化了，就这样吧~
+
