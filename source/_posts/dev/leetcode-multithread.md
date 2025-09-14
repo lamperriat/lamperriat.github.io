@@ -315,3 +315,80 @@ public:
 
 不过由于不知道leetcode到底怎么调用的，暂时就不再优化了，就这样吧~
 
+#### 1195.交替打印字符串
+实现一个有四个线程的多线程版  `FizzBuzz，` 同一个 `FizzBuzz` 实例会被如下四个线程使用：
+
+* 线程A将调用 `fizz()` 来判断是否能被 3 整除，如果可以，则输出 `fizz`。
+* 线程B将调用 `buzz()` 来判断是否能被 5 整除，如果可以，则输出 `buzz`。
+* 线程C将调用 `fizzbuzz()` 来判断是否同时能被 3 和 5 整除，如果可以，则输出 `fizzbuzz`。
+* 线程D将调用 `number()` 来实现输出既不能被 3 整除也不能被 5 整除的数字。
+
+---
+
+其实就是把函数调的过程改成A线程semaphore，B线程acquire而已，这样就很容易理解了
+```cpp
+class FizzBuzz {
+private:
+    int n;
+    std::binary_semaphore canDoFizz;
+    std::binary_semaphore canDoBuzz;
+    std::binary_semaphore canDoFizzBuzz;
+    std::binary_semaphore done;
+
+    int fizzCount;
+    int buzzCount;
+    int fizzBuzzCount;
+public:
+    FizzBuzz(int n) : canDoBuzz(0), canDoFizz(0), canDoFizzBuzz(0), done(0) {
+        this->n = n;
+        fizzCount = (n / 15) * 4 + (n % 15) / 3;
+        buzzCount = (n / 15) * 2 + (n % 15) / 5;
+        fizzBuzzCount = n / 15;
+    }
+
+    // printFizz() outputs "fizz".
+    void fizz(function<void()> printFizz) {
+        for (int i = 0; i < fizzCount; i++) {
+            canDoFizz.acquire();
+            printFizz();
+            done.release();
+        }
+    }
+
+    // printBuzz() outputs "buzz".
+    void buzz(function<void()> printBuzz) {
+        for (int i = 0; i < buzzCount; i++) {
+            canDoBuzz.acquire();
+            printBuzz();
+            done.release();
+        }
+    }
+
+    // printFizzBuzz() outputs "fizzbuzz".
+	void fizzbuzz(function<void()> printFizzBuzz) {
+        for (int i = 0; i < fizzBuzzCount; i++) {
+            canDoFizzBuzz.acquire();
+            printFizzBuzz();
+            done.release();
+        }
+    }
+
+    // printNumber(x) outputs "x", where x is an integer.
+    void number(function<void(int)> printNumber) {
+        for (int i = 1; i <= n; i++) {
+            if (i % 15 == 0) {
+                canDoFizzBuzz.release();
+                done.acquire();
+            } else if (i % 3 == 0) {
+                canDoFizz.release();
+                done.acquire();
+            } else if (i % 5 == 0) {
+                canDoBuzz.release();
+                done.acquire();
+            } else {
+                printNumber(i);
+            }
+        }
+    }
+};
+```
