@@ -25,3 +25,4 @@ categories:
 ### 工具 - 生活
 * [TrackWeight](https://github.com/KrishKrosh/TrackWeight): 用mac的触控板当电子秤使用。实测误差大小在烹饪时基本可以忽略，还是比较好用的。
 * [HumanSystemOptimization](https://github.com/zijie0/HumanSystemOptimization)和[HowToLiveLonger](https://github.com/geekan/HowToLiveLonger): 程序员延寿指南
+* [SillyTavern](https://github.com/SillyTavern/SillyTavern): 之前玩星野觉得还挺好玩，就是限制太多了。SillyTavern提供了一个非常不错的前端，直接调apikey来进行类似星野那样的聊天。因为是apikey的关系，有很多懂得都懂的好处，可以绕开许多限制。
