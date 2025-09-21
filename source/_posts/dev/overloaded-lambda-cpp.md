@@ -17,7 +17,7 @@ struct overloaded : Ts... { using Ts::operator()...; };
 using FieldValue = std::variant<int, float, std::string, bool>;
 
 std::vector<std::byte> Record::serialize() const {
-	std::vector<std::byte> data;
+    std::vector<std::byte> data;
 	for (const auto &field : values_) {
 		std::visit(overloaded{
 		    [&data](int value) {},
