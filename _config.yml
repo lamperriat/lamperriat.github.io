@@ -56,7 +56,7 @@ highlight:
 prismjs:
   preprocess: true
   line_number: true
-  tab_replace: ''
+  tab_replace: '    '
 
 # Home page setting
 # path: Root path for your blogs index page. (default = '')
