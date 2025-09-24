@@ -16,13 +16,13 @@ cpp中存在许多乍一看不太符合直觉的特性，或者说，坑，因�
 ```cpp
 void benchmark_insert(size_t chunk_size, size_t total_size) {
     std::vector<std::byte> source_data(chunk_size);
-    std::vector<std::byte> outData;
-    // outData.reserve(total_size);
+    std::vector<std::byte> out_data;
+    // out_data.reserve(total_size);
     const size_t iterations = total_size / chunk_size;
     auto start = std::chrono::high_resolution_clock::now();
 
     for (size_t i = 0; i < iterations; ++i) {
-        outData.insert(outData.end(), source_data.data(), source_data.data() + source_data.size());
+        out_data.insert(out_data.end(), source_data.data(), source_data.data() + source_data.size());
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -32,13 +32,13 @@ void benchmark_insert(size_t chunk_size, size_t total_size) {
 
 void benchmark_copy(size_t chunk_size, size_t total_size) {
     std::vector<std::byte> source_data(chunk_size);
-    std::vector<std::byte> outData;
-    // outData.reserve(total_size);
-    const size_t iterations = total_size / chun
+    std::vector<std::byte> out_data;
+    // out_data.reserve(total_size);
+    const size_t iterations = total_size / chunk_size;
     auto start = std::chrono::high_resolution_clock::now();
 
     for (size_t i = 0; i < iterations; ++i) {
-        std::copy(source_data.begin(), source_data.end(), std::back_inserter(outData));
+        std::copy(source_data.begin(), source_data.end(), std::back_inserter(out_data));
     }
 
     auto end = std::chrono::high_resolution_clock::now();
