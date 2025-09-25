@@ -6,6 +6,8 @@ categories:
     - backend
 ---
 
+在学习过程中记录的一些问题，**并非面经**！
+
 (1) 在一个复杂的SQL query的运行过程中，MySQL的执行过程是？将以下clause按照执行顺序先后排序。
 
 `SELECT`, `FROM`, Window Functions, `WHERE`, `HAVING`, `JOIN`, `DISTINCT`, `ORDER BY`, `GROUP BY`, `LIMIT`, `OFFSET`
@@ -856,4 +858,14 @@ Tag: Cryptography, Cyber Security
 <summary>Answer: </summary>
 
 使用例如`bcrypt`之类的更安全的哈希而非朴素哈希算法如`sha256`。这是因为朴素哈希算法计算速度快，容易受到彩虹表攻击，相同密码会产生相同的哈希。而`bcrypt`自带salting，计算缓慢，更加安全。即使数据库发生泄漏，也能保障攻击者无法轻易从哈希值获取到用户密钥。
+</details>
+
+(64) 为什么MySQL没有scan sharing的feature?
+
+Tag: Database, MySQL
+
+<details>
+<summary>Answer: </summary>
+
+Scan sharing一般用在需要大量全表扫描的情景下，即OLAP(Online Analytical Processing)，而MySQL(InnoDB)的主要应用场景为OLTP(Online Transaction Processing)，注重的是并行处理小型的、快速的query的效率。在MySQL中出现全表扫描是很不正常的事情，毕竟一个大的表，比如千万量级，你再优化也一样很慢，不应该出现在注重实时性的线应用中。当然，可能还存在一些架构上的原因，或者实现的难点。
 </details>

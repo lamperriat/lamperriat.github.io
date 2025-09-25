@@ -10,7 +10,7 @@ cpp中存在许多乍一看不太符合直觉的特性，或者说，坑，因�
 
 ### std::copy vs vector::insert
 
-`std::copy`是一个怎么看都和`memcpy`挂钩的函数，听名字就很快啊，但事实真是如此吗？
+在写project的时候发现ai给的代码里面有`std::copy`，这个东西怎么看都和`memcpy`挂钩，听名字就很快啊，但事实真是如此吗？
 
 首先上benchmark，测试在vector末尾进行`insert`
 ```cpp
@@ -148,8 +148,12 @@ void benchmark_copy(size_t chunk_size, size_t total_size) {
 </table>
 
 
-实际上，虽然说所有benchmark中都是`insert`更快，但这个差距的变化实在太大了。对该问题做出完善的解释已经超出了我的能力范围，非常抱歉。期待有大佬来解析一下。
+实际上，所有benchmark中都是`insert`更快，但有些case中差距显著有些不显著。基本猜想是，mac上差距很大是因为某些优化的失效，而`copy`更慢大概率是内存分配上的原因。
 
-基本猜想是，mac上差距很大是因为某些优化的失效，而`copy`更慢大概率是内存分配上的原因。
+搜索了一下存在不少相关的帖子，但都没有包含非常细致的编译器源码分析。我对编译器这块实在说不上精通，因此期待有大佬来解析一下。
+
+Reference: 
+* https://hjortsberg.org/notes/C++-vector-insert-performance.html
+* https://stackoverflow.com/questions/51930042/
 
 TODO: perf一下，顺便与deepwiki再聊一下，看看llvm的实现。
