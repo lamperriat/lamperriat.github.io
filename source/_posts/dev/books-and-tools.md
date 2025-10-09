@@ -13,6 +13,7 @@ categories:
 * (VSCode插件)markdown editor: 类typora(即WYSIWYG形式)的markdown编辑插件，也开源
 * [gemini-cli](https://github.com/google-gemini/gemini-cli): 虽然已经很火了，不过似乎大部分人还都只是听过而没用过。我个人非常非常喜欢gemini cli的设计，作为一个cli设计堪称完美。而且超高的限额基本约等于一直免费用gemini2.5 pro。Google真是一如既往对用户良心啊。
 * (VScode插件)marp: 从markdown生成presentation slides，简洁美观。通过其他工具可以转换回pptx，希望花里胡哨的话也可以满足。
+* [gdu](https://github.com/dundee/gdu): Go写的一个磁盘分析工具，效率感觉还不错，扫个C盘还是挺快的。cli也是简洁美观易用。
 
 ### 工具 - shell
 * [ranger](https://github.com/ranger/ranger): 命令行文件管理器，可以用类似vim的命令操作，非常方便快速。在我的mac上比[GNU midnight commander](https://github.com/MidnightCommander/mc)要明显打开速度更快。
