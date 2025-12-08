@@ -15,6 +15,9 @@ categories:
 * [gemini-cli](https://github.com/google-gemini/gemini-cli): 虽然已经很火了，不过似乎大部分人还都只是听过而没用过。我个人非常非常喜欢gemini cli的设计，作为一个cli设计堪称完美。而且超高的限额基本约等于一直免费用gemini2.5 pro。Google真是一如既往对用户良心啊。
 * (VScode插件)marp: 从markdown生成presentation slides，简洁美观。通过其他工具可以转换回pptx，希望花里胡哨的话也可以满足。
 * [gdu](https://github.com/dundee/gdu): Go写的一个磁盘分析工具，效率感觉还不错，扫个C盘还是挺快的。cli也是简洁美观易用。
+* [ripgrep](https://github.com/BurntSushi/ripgrep): Rust写的`grep`的替代品，效率更高
+* [fd](https://github.com/sharkdp/fd): Rust写的`find`的替代品，使用起来略微更加舒适一点
+* [jq](https://github.com/jqlang/jq), [yq](https://github.com/mikefarah/yq), 
 
 ### 工具 - shell
 * [ranger](https://github.com/ranger/ranger): 命令行文件管理器，可以用类似vim的命令操作，非常方便快速。在我的mac上比[GNU midnight commander](https://github.com/MidnightCommander/mc)要明显打开速度更快。
@@ -28,3 +31,6 @@ categories:
 * [TrackWeight](https://github.com/KrishKrosh/TrackWeight): 用mac的触控板当电子秤使用。实测误差大小在烹饪时基本可以忽略，还是比较好用的。
 * [HumanSystemOptimization](https://github.com/zijie0/HumanSystemOptimization)和[HowToLiveLonger](https://github.com/geekan/HowToLiveLonger): 程序员延寿指南
 * [SillyTavern](https://github.com/SillyTavern/SillyTavern): 之前玩星野觉得还挺好玩，就是限制太多了。SillyTavern提供了一个非常不错的前端，直接调apikey来进行类似星野那样的聊天。因为是apikey的关系，有很多懂得都懂的好处，可以绕开许多限制。
+
+Reference:
+* https://www.zhihu.com/question/1976249884672816334/answer/1980411487311896740
