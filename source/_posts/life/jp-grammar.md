@@ -981,6 +981,264 @@ A叫B做
 记忆: 条件、可能、命令都是变え段；受身、使役、尊敬都是变あ段；剩下的比较简单。只要记住命令就是最尖端的、条件就是れば，可能就是れる，受身和尊敬就是られる，使役就是させる，即可。
 注意: 来る的变形读音会变化。
 
+All-in-one 速查表
+
+<style>
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 20px 0;
+        font-family: Arial, sans-serif;
+    }
+    th, td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+    }
+    th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+    }
+    .vowel-row {
+        background-color: #e6f7ff; 
+        font-weight: bold;
+    }
+    .special-row {
+        background-color: #fffbe6;
+        font-weight: bold;
+    }
+    .conj-cell {
+        text-align: left;
+        padding-left: 15px;
+    }
+    .category-header {
+        background-color: #e6f7ff; 
+        font-weight: bold;
+    }
+    .form-name {
+        background-color: #fffbe6;
+        font-weight: bold;
+    }
+    .kuru-irregular {
+        color: #c0392b; 
+    }
+</style>
+
+<table>
+    <thead>
+        <tr>
+            <th></th>
+            <th>わ段</th>
+            <th>か段</th>
+            <th>が段</th>
+            <th>さ段</th>
+            <th>た段</th>
+            <th>な段</th>
+            <th>ば段</th>
+            <th>ま段</th>
+            <th>ら段</th>
+            <th>接续/助动词</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr class="vowel-row">
+            <td>あ段</td>
+            <td>わ</td>
+            <td>か</td>
+            <td>が</td>
+            <td>さ</td>
+            <td>た</td>
+            <td>な</td>
+            <td>ば</td>
+            <td>ま</td>
+            <td>ら</td>
+            <td class="conj-cell">
+                + ない [ない形]<br>
+                + なかった [なかった形]<br>
+                + れます [受身形・尊敬形]<br>
+                + せます [使役形]
+            </td>
+        </tr>
+        <tr class="vowel-row">
+            <td>い段</td>
+            <td>い</td>
+            <td>き</td>
+            <td>ぎ</td>
+            <td>し</td>
+            <td>ち</td>
+            <td>に</td>
+            <td>び</td>
+            <td>み</td>
+            <td>り</td>
+            <td class="conj-cell">
+                + ます [ます形]
+            </td>
+        </tr>
+        <tr class="vowel-row">
+            <td>う段</td>
+            <td>う</td>
+            <td>く</td>
+            <td>ぐ</td>
+            <td>す</td>
+            <td>つ</td>
+            <td>ぬ</td>
+            <td>ぶ</td>
+            <td>む</td>
+            <td>る</td>
+            <td class="conj-cell">
+                [辞書形]<br>
+                + な [禁止形]
+            </td>
+        </tr>
+        <tr class="vowel-row">
+            <td>え段</td>
+            <td>え</td>
+            <td>け</td>
+            <td>げ</td>
+            <td>せ</td>
+            <td>て</td>
+            <td>ね</td>
+            <td>べ</td>
+            <td>め</td>
+            <td>れ</td>
+            <td class="conj-cell">
+                + ます [可能形]<br>
+                + ば [条件形]<br>
+                [命令形]
+            </td>
+        </tr>
+        <tr class="vowel-row">
+            <td>お段</td>
+            <td>お</td>
+            <td>こ</td>
+            <td>ご</td>
+            <td>そ</td>
+            <td>と</td>
+            <td>の</td>
+            <td>ぼ</td>
+            <td>も</td>
+            <td>ろ</td>
+            <td class="conj-cell">
+                + う [意向形]
+            </td>
+        </tr>
+        <tr class="special-row">
+            <td>音便</td>
+            <td>っ</td>
+            <td>い</td>
+            <td>い</td>
+            <td>し</td>
+            <td>っ</td>
+            <td>ん</td>
+            <td>ん</td>
+            <td>ん</td>
+            <td>っ</td>
+            <td class="conj-cell">
+                + て (で) [て形]<br>
+                + た (だ) [た形]
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+
+<table>
+    <thead>
+        <tr>
+            <th colspan="1"></th>
+            <th class="category-header">第 II 類動詞 (一段動詞)</th>
+            <th class="category-header" colspan="2">第 III 類動詞 (不規則動詞)</th>
+            <th class="category-header">活用形名称</th>
+        </tr>
+        <tr>
+            <th>（例：食べ、教え、起き、見、寝）</th>
+            <th>来る (kuru)</th>
+            <th>する (suru)</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>ない</td>
+            <td class="kuru-irregular">来ない (こない)</td>
+            <td>しない</td>
+            <td class="form-name">ない形</td>
+        </tr>
+        <tr>
+            <td>なかった</td>
+            <td class="kuru-irregular">来なかった (こなかった)</td>
+            <td>しなかった</td>
+            <td class="form-name">なかった形</td>
+        </tr>
+        <tr>
+            <td>られます</td>
+            <td class="kuru-irregular">来られます (こられます)</td>
+            <td>されます</td>
+            <td class="form-name">受身形・尊敬形</td>
+        </tr>
+        <tr>
+            <td>させます</td>
+            <td class="kuru-irregular">来させます (こさせます)</td>
+            <td>させます</td>
+            <td class="form-name">使役形</td>
+        </tr>
+        <tr>
+            <td>ます</td>
+            <td class="kuru-irregular">来ます (きます)</td>
+            <td>します</td>
+            <td class="form-name">ます形</td>
+        </tr>
+        <tr>
+            <td>る</td>
+            <td class="kuru-irregular">来る (くる)</td>
+            <td>する</td>
+            <td class="form-name">辞書形 (基本形)</td>
+        </tr>
+        <tr>
+            <td>るな</td>
+            <td class="kuru-irregular">来るな (くるな)</td>
+            <td>するな</td>
+            <td class="form-name">禁止形</td>
+        </tr>
+        <tr>
+            <td>られます<br>(れます)</td>
+            <td class="kuru-irregular">来られます (こられます) <br> **(来れます)**</td>
+            <td>できます</td>
+            <td class="form-name">可能形 （「去接尾词 ら」的可能形）<br>（注: 表达可能形时把ら去掉的人越来越多，未来可能不需要ら）</span></td>
+        </tr>
+        <tr>
+            <td>れば</td>
+            <td class="kuru-irregular">来れば (くれば)</td>
+            <td>すれば</td>
+            <td class="form-name">条件形</td>
+        </tr>
+        <tr>
+            <td>ろ</td>
+            <td class="kuru-irregular">来い (こい)</td>
+            <td>しろ</td>
+            <td class="form-name">命令形</td>
+        </tr>
+        <tr>
+            <td>よう</td>
+            <td class="kuru-irregular">来よう (こよう)</td>
+            <td>しよう</td>
+            <td class="form-name">意向形</td>
+        </tr>
+        <tr>
+            <td>て</td>
+            <td class="kuru-irregular">来て (きて)</td>
+            <td>して</td>
+            <td class="form-name">て形</td>
+        </tr>
+        <tr>
+            <td>た</td>
+            <td class="kuru-irregular">来た (きた)</td>
+            <td>した</td>
+            <td class="form-name">た形</td>
+        </tr>
+    </tbody>
+</table>
+
 ### 后接假名
 标记假名(振り仮名): <ruby>振<rt>ふ</rt></ruby>り<ruby>仮名<rt>がな</rt></ruby>
 后接假名(送り仮名): 送*り*
@@ -1012,3 +1270,4 @@ A叫B做
 * 静か
 * 穏やか
 * 朗らか
+
