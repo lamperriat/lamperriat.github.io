@@ -53,3 +53,21 @@ std::memcpy(&value, data.data() + offset, sizeof(int));
 values_.emplace_back(value);
 offset += sizeof(int);
 ```
+
+## Unreal CPP
+以下为Unreal cpp相关
+
+### 指针的初始化
+在旧版本中，只要指针成员带有`UPROPERTY()`这个macro，就会自动初始化为`nullptr`。在新版本用最好直接用`TObjectPtr`这个wrapper而不是裸指针
+```cpp
+// old
+UPROPERTY()
+AActor* MyActor;
+
+// new
+UPROPERTY()
+TObjectPtr<AActor> MyActor;
+```
+
+`TObjectPtr`同样也可以手动赋值`nullptr`初始化，这样代码看起来更清晰，这是一个good practice。
+注意UE的GC依赖于`UPROPERTY`这个macro，一般对于`TObjectPtr`都要加上`UPROPERTY()`。
