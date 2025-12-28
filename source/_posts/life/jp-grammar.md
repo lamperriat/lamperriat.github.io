@@ -991,20 +991,17 @@ All-in-one 速查表
         font-family: Arial, sans-serif;
     }
     th, td {
-        border: 1px solid #ddd;
+        border: 1px solid ;
         padding: 8px;
         text-align: center;
     }
     th {
-        background-color: #f2f2f2;
         font-weight: bold;
     }
     .vowel-row {
-        background-color: #e6f7ff; 
         font-weight: bold;
     }
     .special-row {
-        background-color: #fffbe6;
         font-weight: bold;
     }
     .conj-cell {
@@ -1012,11 +1009,9 @@ All-in-one 速查表
         padding-left: 15px;
     }
     .category-header {
-        background-color: #e6f7ff; 
         font-weight: bold;
     }
     .form-name {
-        background-color: #fffbe6;
         font-weight: bold;
     }
     .kuru-irregular {
@@ -1273,6 +1268,7 @@ All-in-one 速查表
 
 ### 再变化
 e.g.
+
 ```
 飲む
 　みます
@@ -1349,3 +1345,4 @@ e.g.
 * 样态: 〜ようだ
 
 语气(Tone): 互动的信号，在最外层。内容为终助词，如よ、ね、かな
+
