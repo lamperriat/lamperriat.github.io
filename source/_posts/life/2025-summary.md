@@ -1,7 +1,7 @@
 ---
 title: 2025年终总结
 date: 2026-01-01 10:55:06
-tags:
+categories:
   - life
   - others
 ---
