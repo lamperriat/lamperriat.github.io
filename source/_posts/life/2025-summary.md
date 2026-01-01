@@ -41,3 +41,5 @@ tags:
 刚刚入门，本金大概4600usd，目前打算BRK.B+JQUA+DXJ+SPY+GOOG+GLD(少量)建仓，看看年末收益如何吧。
 
 以上。不知明年的此时会如何呢，AI会有什么新的breakthrough，美股是否还能继续上涨，国内的经济能否好起来？真是令人期待啊。
+
+![sao](./2025-summary/sao.png)
