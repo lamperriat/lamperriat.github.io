@@ -42,4 +42,8 @@ categories:
 
 以上。不知明年的此时会如何呢，AI会有什么新的breakthrough，美股是否还能继续上涨，国内的经济能否好起来？真是令人期待啊。
 
-![sao](./2025-summary/sao.png)
+{% asset_img "sao.png" "sao" %}
+
+<p style="text-align: center; font-style: italic; font-size: 13px">
+    2025年了，SAO还是遥遥无期
+</p>
