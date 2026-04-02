@@ -73,3 +73,9 @@ B树使用按理: 主流关系型数据库，如MySQL, PostgreSQL
 新产品: Facebook的MyRocks，结合MySQL的功能和RocksDB(基于SSTable)存储引擎
 
 全文检索: 使用倒排列表，将词映射到包含词的ID列表，可以用稀疏bitmap储存，bitmap可以用游程编码(run-length encoding)来压缩。如果希望像搜索引擎一样检索，则需要用embedding加上similarity search(参考facebook的著名开源项目https://github.com/facebookresearch/faiss)
+
+
+Encoding: 这里介绍两个常用的工具
+Protobuf: 使用广泛，用于游戏服务器
+
+Apache Avro: 主要用于Hadoop
