@@ -214,3 +214,37 @@ sh.interactive()
 * hijack GOT，直接把puts之类的函数的got项修改为system或其他危险函数的地址，在下次执行puts时就会直接执行system
 * hijact return address，获得offset，然后直接修改return address到想要的地方
 * 堆上字符串，将栈迁移上堆(stack pivoting)。这个比较麻烦，需要寻找很多地址。因为format string在heap上也就意味着往stack上一直读并不会读到format string自身，也就没办法直接在format string里面注入一个address。但是在这个example里，saved ebp本身会被当作format argument读到。但因为我们只能直接往saved ebp写，也就意味着我们不能用`hhn`之类的手段，只能一次写完，这可能导致exploit失败
+
+### Day 3
+**Windows Anti-debug**:
+主要参考[这篇](https://ctf-wiki.org/reverse/platform/windows/anti-debug/example/)
+* `IsDebuggerPresent`: 单纯检测`BeingDebugged` flag的值，直接手动设置一下或者手动改返回值就可以绕过。
+* `NtGlobalFlag`: PEB中的一个字段，有一些flag。只有进程由debugger创建(而非attach)时才会被设置。绕过检测也很简单，用一些插件，`windbg -hd`禁用调试堆，也可以直接手动修改flag的值。
+* `Interrupt 3`: `EXCEPTION_BREAKPOINT(0x80000003)`触发时，`EIP`不会像其他异常处理时一样被指向异常的下一句指令。
+* `CheckRemoteDebuggerPresent`: remote指的是同一台机器的不同进程，检测指定进程是否在被debug。通过`NtQueryInformationProcess`来完成。可以直接修改值或者jump flag来绕过。
+* `NtQueryInformationProcess()`: 有几个信息类。`ProcessDebugPort`来自内核，很难直接绕过。通过读取`EPROCESS`的`DebugPort`来判断。还有一些其他的信息类
+* `ZwSetInformationThread()`: 通过传入特定参数来禁止thread产生调试事件。绕过只需要修改传入函数的参数。
+* 时间差检测: 获取调试和非调试下的时间差异来判断
+
+**VM检测**:
+* BIOS
+* 字符串特征
+* VMWare IO Port
+
+其他的保护策略:
+数据校验: 计算好checksum运行时比较是否被修改
+内存校验: 类似，检测一些不应该被修改的segment是否被修改
+Shadow Stack: 在存return address时在另一个栈上(shadow stack)也存一份，返回前检查两个地址是否相等。这能有效阻止ROP
+Windows CFG (Control Flow Guard): 在security的课程中学到过。简单来说就是分析正常来说当前函数可能会jump到哪些函数。如果jump到不应该去的函数，那就说明control flow被劫持了，比如有人利用了stackoverflow，然后试图return回一些危险的函数来获得控制权。
+Virtualization Obfuscation: 自己定义一套VM，寄存器，stack，opcode，把原始代码翻译成自己的bytecode再执行。
+保护壳: 用来保护软件不被非法修改或反编译的技术。先于程序运行，拿到控制权，完成保护软件的任务。有压缩壳，即运行时再解压，和加密壳，即运行时再解密。但壳本身也是一个正常程序，仍然可以被debug。可以通过一些debug手段来停在OEP(original entry point)之前，把真正的程序dump出来。
+IAT(Import Address Table) Obfuscation: 导入表加密，防止attacker通过IAT获得太多symbol信息，把API的语义隐藏。具体来说，可以用API hashing，即算hash来找到匹配的api，让api只以一串hash的形式出现。IAT模拟: 自己实现一些可能调用的外部函数
+模块拷贝移位: 用来对抗hook。重新读一份dll，然后加载。在原来的dll上设置的hook就被绕开了。
+代码混淆(obfuscation): 用一些策略来干扰静态分析工具，包括
+* String Encryption: 避免暴露裸的string text
+* Dynamic code loading / packing: 在运行时load一些代码而不是直接全部打包
+* Control Flow Obfuscation: 即加入一些垃圾让程序的control flow变得乱七八糟，难以分析。
+* Dead Code Injection: 注入垃圾代码让reverse engineering时需要分析的东西变多
+* Symbol Stripping: rename一些本来比较固定的symbols
+* Control Flow Flattening: 用dispatcher/state machine代替原本的control flow
+* Junk Code: 增加垃圾，干扰静态分析
