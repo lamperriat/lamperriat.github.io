@@ -248,3 +248,166 @@ IAT(Import Address Table) Obfuscation: 导入表加密，防止attacker通过IAT
 * Symbol Stripping: rename一些本来比较固定的symbols
 * Control Flow Flattening: 用dispatcher/state machine代替原本的control flow
 * Junk Code: 增加垃圾，干扰静态分析
+
+(Arm部分移动到Day 4)
+
+### Day 4
+ARM32，主要基于 https://azeria-labs.com/writing-arm-assembly-part-1/
+(AArch32即ARM Architecture 32Bits, 和ARM32是一个意思)
+以下内容如无额外说明则均基于ARM32，在最后会有关于ARM64的部分
+
+Part I. Intro
+ARM是RISC (reduced instruction set computing)处理器，instruction的数量更少，registers更多。只有load/store可以access memory. 在version 3后ARM是Bi-endian的，可以自己设置
+
+Part II. Data Types and Regs
+`-h`,`-sh`: half words; `-b`, `-sb`: bytes; no extension: words
+比如，
+```
+ldr: load word
+ldrh: load half word
+ldrsh: load signed half word
+ldrsb: load signed byte
+```
+
+30 registers, 16在usermode可用。
+* `r0-12`都是general purpose
+* `r7`一般约定存syscall number
+* `r11-15`分别是FP (frame pointer), IP (intra procedural call scratch register，就是一个在函数调用时存临时值的register), SP (stack pointer), LR (link register，即return address), PC (program counter)
+* CSPR: current program status register
+
+Function call的前四个arg约定在r0-r3
+在执行过程中，`PC`会指向当前instruction+8 (2条instructions后, ARM state) 或+4 (2条thumb instructions后，thumb state)。这个设计是为了兼容性，因为旧的arm processor一次fetch两条instructions
+
+`CSPR`: 有很多flag类似于x86的`EFLAG`，包括N(negative, =SF),Z(zero, =ZF),C(carry, =CF),V(overflow, =OF), E (endian), T (thumb)之类的
+(subtraction的结果$\geq 0$的时候，carry会被设置为1)
+
+Part III. ARM & THUMB
+ARM state的instruction永远是32b，Thumb state时16b但也可以时32b。这个在不同arm版本下都有所不同，比较复杂，在用的时候应该check对应版本的说明。
+
+* ARM的所有instruction都支持conditional execution (run/skip based on status flags，可以减少不必要的branch/jump)。Thumb在某些版本有支持。
+* ARM支持barrel shift. barrel shifter时一个hardware，在执行指令的同时执行shift。因此可以执行类似`MOV R1, R0, LSL #1`的指令，即把R0移动给R1，同时左移一位
+
+在ARM和Thumb之间switch: 
+* 可以用BX (branch and exchange), BLX (branch, link, and exchange)去把目标register的LSB修改为1。这不会导致alignment issue因为processor在执行时会忽略LSB
+* CPSR的T bit如果是1，就代表我们在Thumb mode
+
+ARM指令基本格式是
+```
+mnemonic{suffix}{condition} {dest_reg}, operand1, operand2
+```
+`condition`就是CPSR的特殊bit。`#...`表示immediate value
+```asm
+ADD R0, R1, R2    @ R0 = R1 + R2
+ADD R0, R1, #2    @ R0 = R1 + 2
+MOVLE R0, #5      @ if E is set, R0 = 5
+MOV R0, R1, LSL #1   @ R0 = (R1 << 1)
+```
+
+Part IV. Load and Store
+和x86不同，ARM里只有load/store可以access memory。
+offset的形式可以是immediate value, register，或scaled register
+
+最基本的:
+```asm
+LDR R2, [R0]   @ R2 = *R0
+STR R2, [R1]   @ *R1 = R2
+```
+
+在assembly中可以用label或者PC-relative addressing表示地址
+Offset形式
+* `STR Ra, [Rb, #imm]`即`*(Rb+imm) = Ra`
+* `STR Ra, [Rb, #imm]!` (pre-indexed)，即`*(Rb+imm) = Ra; Rb += imm`
+* `STR Ra, [Rb], #imm` (post-indexed), 即`*Rb = Ra; Rb += imm`
+
+使用register的形式类似，即把`#imm`替换为register
+使用scaled register形式也类似，即`STR Ra, [Rb, Rc, <shifter>]`
+* `STR R2, [R1, R2, LSL#2]`: `*(R1+R2<<2) = R2`
+
+Pseudo-instructions: 可以用下面的方法去reference data in the literal pool
+`ldr r0, =jump` (load the address of the label `jump`)
+
+ARM instruction的组成和immediate value的限制:
+ARM单条instruction长32b。conditional code占4爸，dest register占2b，第一个operand占2b，set-status flag占1b，还有opcode本身占用的bits，因此在设计上，每条instruction只有12b可以用来存immediate values。然后这12b被拆分为8b的number，以及4b的right rotation field
+对于太大的value，除了直接拆以外，也可以用上面的技巧，比如`LDR r1,=511`。如果这里的值比较小则会被assembler转换为mov
+
+Part V. Load/Store Multiple
+`LDM`和`STM`可以用来load/store多个值
+`ADR r0, words+12`: `r0 = &words[3]`
+`LDM r0, {r4,r5}`: `r4 = *r0; r5 = *(r0+4)`
+`STM r1, {r4,r5}`: `*r1 = r4; *(r1+4) = r5`
+Variations: `-IA` (increase after), `-IB`(increase before), `-DA` (decrease after), `-DB`(decrease before)
+`LDM` is the same as `LDMIA`, address for the next element is *increased after* each load. 
+`LDMIB`类似，相当于从`+4`的offset起始，连续读入
+`LDMDA`使用时，registers本身也会loaded backwards，即
+`LDMDA r0, {r4-r6}`相当于 `r6 = *r0; r5 = *(r0-4); r4 = *(r0-8)`
+`LDMDB`类似，相当于从`-4`的offset起始
+
+Push and Pop. 
+* `push`相当于`sp-4`然后把值放在新的`sp`指向的地方
+* `pop`相当于从`sp`指向的地方读一个值，然后把`sp+4`
+
+`push {r0, r1}`相当于`stmdb sp!, {r0, r1}`(因此实际order是先r1再r0)
+`pop {r4, r5}`相当于`ldmia sp!, {r4, r5}`
+
+Part VI. Conditional Execution
+一共有16个conditions，包括`EQ` (`Z==1`)，`GT` (`Z==0 && N==V`)，`LE` (`Z==1 || N!=V`)之类的
+例子:
+```asm
+cmp r0, #3
+addlt r0, r0, #1
+```
+相当于，如果`r0 < 3`，则`r0 += 1`。
+
+对于Thumb，部分版本支持`IT` instruction (if-then)，具体来说，对于`IT`,下一个instruction会是conditional的，对于`ITT, ITE`(if-then-then, if-then-else)，后两个instructions是conditional的，还有`ITTE, ITTEE`
+```
+.code 16
+ITE EQ
+ADDEQ r1, #2 @ 这一条必须也是EQ
+addne r1, #3 @ 这一条必须是inverse
+```
+
+Branches (jumps)用于If和loops，比如
+```asm
+cmp r1, r2
+blt r1_lower
+...
+
+r1_lower:
+...
+```
+
+这就是一个典型的if。类似地也可以创建一个loop
+branch有三个指令
+* `B` (branch): 直接jump
+* `BL` (branch link): `LR = PC+4`，然后jump
+* `BX` (branch exchange) 和 `BLX` (branch link exchange): 和B/BL一样，同时 exchange instruction set (ARM/Thumb)。需要一个register作为operand
+
+Part VII. Stack and Functions
+Stack有各种实现形式，比如full descending，sp指向最后一个合法元素，然后stack grows down
+FP指向一个stack frame的底部，即这个stack frame开始的地方，stack frame中需要储存return address (即previous LR)，previous frame pointer，以及其他需要保存的registers。函数call的参数太多时stack也会被用来传参。
+一个函数，就和x86的一样，由prologue，body，epilogue组成
+prologue即把需要存的值push上stack; epilogue用来恢复在prologue存的值
+返回值一般存R0; 对于leaf function，可以不用存LR
+
+
+AArch64简介
+这一部分在原计划没有，但现在AArch64还是比较popular的，mac证明了arm架构的潜力。因此这里略微进行一点学习。
+首先register的数量变多，可用registers数从16变成31。然后ISA(Instruction Set Architecture) 从A32+Thumb变成A64。
+
+
+Register上，arm64有`x0-x30`，然后`w0-w30`是64b register的low32bit view。写入`w` register会把upper 32b设置为0。此外有单独的`sp`。`pc`不再是一个GPR(general purpose register)，不能直接像操作其他register一样操作`pc`。`x29`是convention上的frame pointer。特别地，arm64提供了zero register `xzr`(64), `wzr`(32)。便于直接丢弃不需要的result，比如一个只需要设置flag的操作。比如，`cmp x0, x1`本质上是`subs xzr, x0, x1`
+
+函数调用相关: arm64中直接用`ret`而不是`bx lr`。但调用时仍类似。registers分为caller-saved和callee-save，因为register数量变多了，这方便的convention自然也有一些变化。
+
+arm64移除了arm32中的general conditional execution，因此大部分情况还是需要用branch。flag (NZCV)是一样的，但并不是所有instruction都会update flag，比如`add`不会修改NZCV而`adds`会
+
+arm64的每条指令都是32b。因此immediate的范围仍然很小。但可以用`movz` (move zero，其他设置为0)，和`movk` (move keep，其他保持不变)来一次修改16b地读入immediate。此外还有`movn`，计算immediate的bitwise inverse后读入，也就是其他都是1。`add`/`sub`仍然是接受一个12b immediate + optional shift。对于logical指令，给的immediate被认为是代表一个repeated pattern(也就是可以很高效得进行状态压缩之类的操作，比如把8个`int8`压缩成一个`int64`后用mask操作)
+
+arm64仍然可以进行barrel shift的操作。load和store基本一样。
+
+由于指令长度被限制，jump的offset同样有限制。需要jump太远的话就需要assembler/linker搞一个veneer/trampoline
+
+SIMD/floating point register: arm64提供`v0-v31`的128b register，同样有不同的view，比如`d0`就是64b view，可以进行`fadd`浮点数加的操作
+
+
+原Day 4中还包含CTF中其他stackoverflow的内容，主要是stack pivoting和stack smash。前者在之前已经学习过，stack smash即利用canary检查到溢出后，调用`__stack_chk_fail`来print `argv[0]`的行为，覆盖`argv[0]`来泄露信息。
