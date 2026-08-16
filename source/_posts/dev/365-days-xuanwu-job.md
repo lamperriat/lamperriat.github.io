@@ -411,3 +411,93 @@ SIMD/floating point register: arm64提供`v0-v31`的128b register，同样有不
 
 
 原Day 4中还包含CTF中其他stackoverflow的内容，主要是stack pivoting和stack smash。前者在之前已经学习过，stack smash即利用canary检查到溢出后，调用`__stack_chk_fail`来print `argv[0]`的行为，覆盖`argv[0]`来泄露信息。
+
+### Day 5 & 6
+关于整数溢出，实际上没有太多值得讨论的。大多来源于缺少对变量大小的约束，和不规范的type conversion。有些时候，溢出的整数被用于给`malloc`传参，进而导致堆溢出或者直接crash (因为无法分配这么多内存)
+
+heap allocation的exploit例子: https://github.com/shellphish/how2heap
+
+现代malloc: https://www.deep-kondah.com/glibc-heap-internals (备注: 实际上这篇写的不太好，没有合适的overview就直接开始讲源码，不便于理解)
+这里的笔记基于上面这篇对于glibc 2.42的默认allocator `ptmalloc`的分析进行
+
+注意区分glibc的allocator和linux自身的memory management。两者在设计上其实有一定的相似性，但所管理的资源不同。
+
+一个process在64b下的vm layout，从上到下是: kernel, reserved, stack, mmap, heap, `.bss`(uninitialized), `.data`(initialized), `.text`(code), reserved
+
+首先，在最开始，我们需要一个big picture，不然很容易晕头转向。
+```text
+application calls malloc / free / realloc
+                |
+        per-thread fast path: tcache
+                |
+         arena selection
+                |
+    +-----------+-------------------+
+    |                               |
+ main_arena                    other arenas
+    |                               |
+    +------ arena-local allocator --+
+                |
+         arena-managed chunks
+                |
+    +-----------+------------+
+    |                        |
+ fastbins / bins           top chunk
+                              |
+                         insufficient
+                              |
+                          sysmalloc()
+                         /           \
+                      brk             mmap
+                (main arena)     (possible fallback/large requests)
+
+Separately:
+
+sufficiently large malloc request
+                |
+                +----> direct mmap chunk
+```
+
+
+Arena: 独立的allocator instance，用来解决多线程时竞争问题。main-arena的背后是传统的heap，即基于`brk`分配。而其他的secondary arenas则通过`mmap`获得`heap_info`加上heap region。secondary arena的数量是有限制的
+Bins: 组织free chunks的工具，或者说，index。`fastbin`用来快速reuse一个tiny chunk(故意defer consolidation)，`smallbin`指向exact-size reusable的小chunk，`largebin`指向variable-size的大chunk (便于找到最合适的chunk), `unsorted bin`相当于一层cache储存最近free的large chunk
+tcache在arena system之上。在thread中进行malloc时，首先尝试从tcache中寻找一个合适的chunk。每个thread都有自己的thread-local tcache
+TOP chunk时一个特殊的free chunk，在一个arena管控的memory的最顶端。如果所有的bin都不work，那可以直接从top chunk切一块内存用。只有top切不出来的时候才需要找os要额外内存
+
+VM以chunk组织，chunk可以属于process heap (main arena)，也可以被一个`vm_area_struct`表示于mmap的一个区域，即属于thread arena。thread arena由mmap创建，需要有`heap_info` struct，这些heap info被chain在一起，因为他们在mmap区域中不一定连续，因此需要有办法遍历他们。
+对于非常大型的chunk，会直接用`mmap`去allocate。
+
+`malloc_chunk`可以在 https://elixir.bootlin.com/glibc/glibc-2.42/source/malloc/malloc.c, :1144处找到。
+
+一个allocated chunk的组成是 `previous_size`, `chunk_size`(加上flags) 放在最前面，然后是payload，`malloc`直接return指向`payload`起始的指针。`previous_size`只有在前一个chunk是free的时候才有用，如果前一个chunk是allocated的，那么这个字段可以和前一个chunk的payload重叠
+在`chunk_size`中有A, M, P三个flag。(因为`chunk_size`本身是aligned的，因此最后几个bit一定是0，所以这里用作表达flag)。这三个分别代表
+* P: `PREV_INUSE`: 上一个chunk是allocated状态
+* M: `IS_MMAPED`: 这个chunk是由`mmap()`直接获取的
+* A: `NON_MAIN_ARENA`: 这个chunk属于的arena不是main arena
+
+一个free chunk则储存`fd`, `bk` pointer以及`fd_nextsize`, `bk_nextsize`。这个是用来快速找到需要的size的free chunk用的，只有大的bin需要，因为小的bin是fixed size的。与此相关的是，:4291行提到，`maintain large bins in sorted order`
+
+`malloc_state`可以在:1820的地方找到。arena所管理的就是这个state。其中的字段有
+* 一个mutex
+* `int have_fastchunks`，实际上是bool，但不是所有target都支持atmoic bool，因此用int表示
+* `mfastbinptr fastbinsY[NFASTBINS]`: 一个储存fastbins的array
+* `mchunkptr top`: top chunk，该chunk并不会出现在bin中
+* `mchunkptr last_remainder`: 由最近的split造成的未使用的剩余部分
+* `mchunkptr bins[NBINS*2 - 2]`: bins (每个bin都要存一个fd和一个bk，因此是2的倍数)
+* `unsigned int binmap[BINMAPSIZE]`: 用来快速查找空bins的bitmap
+* `struct malloc_state* next`: 以链表形式组织起所有arena
+* 还有几个其他的字段，包括从system分配的内存，有多少thread attach在当前arena等
+
+tcache里的bins的储存方式类似于arena中的bins。默认有64个small bins (exact-size)和12个large bins(variable-size)
+
+glibc中会使用pointer mangling的方法来保护raw pointer:
+```c
+#define PROTECT_PTR(pos, ptr) \
+  ((__typeof (ptr)) ((((size_t) pos) >> 12) ^ ((size_t) ptr)))
+#define REVEAL_PTR(ptr)  PROTECT_PTR (&ptr, ptr)
+```
+利用ASLR提供的随机性，来增加和pointer相关的攻击的难度。
+
+在从os分配时，会利用到transparent huge pages (THP)，即把小的page group成2M的大page用来减少TLB的cache miss rate
+
+glibc提供memory tagging (MT), 爸memory 分成fixed-size granules, 比如16B，然后每个granule会有一个memory tag，由硬件管理，用户完全不可见。在内存访问时，如果发现tag对不上，会直接触发错误。
