@@ -496,8 +496,85 @@ glibc中会使用pointer mangling的方法来保护raw pointer:
   ((__typeof (ptr)) ((((size_t) pos) >> 12) ^ ((size_t) ptr)))
 #define REVEAL_PTR(ptr)  PROTECT_PTR (&ptr, ptr)
 ```
-利用ASLR提供的随机性，来增加和pointer相关的攻击的难度。
+利用ASLR提供的随机性，来增加和pointer相关的攻击的难度。这个可以结合其他check，比如地址必须aligned，因此attacker必须guess最后的四个bit是什么，不然就pass不了alignment check。这个技巧被用于实现safe-linking/unlinking。其他的allocator，比如tcmalloc中，也有类似的保护措施
 
 在从os分配时，会利用到transparent huge pages (THP)，即把小的page group成2M的大page用来减少TLB的cache miss rate
 
 glibc提供memory tagging (MT), 爸memory 分成fixed-size granules, 比如16B，然后每个granule会有一个memory tag，由硬件管理，用户完全不可见。在内存访问时，如果发现tag对不上，会直接触发错误。
+
+另外在pwndbg中有很多可以查看allocator相关信息的command，可以用一下试试。
+
+### Day 7
+**Windows Debugger**
+整体来说，windows debugger是个event-driven的设计。在这个文档中，我们可以看到所有的debugging events: https://learn.microsoft.com/en-us/windows/win32/debug/debugging-events。其中`EXCEPTION_DEBUG_EVENT`即是我们debug时常用的breakpoint，stepping等操作对应的event。值得注意的是，win32并不只代表32bit windows的api，也可能是一部分在32bit和64bit windows上都会运行的核心api
+
+一个[debug event](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-debug_event) struct包含event ode，process id，thread id，和一个各种info的union(对应前面提到的各种debug event)。
+在windows暂定了target的运行后，debugger可以获取target的状态，通过不同api可以分别获得，registers(`GetThreadContext`)和memory (`ReadProcessMemory`)。一个software breakpoint的本质其实就是，debugger把instruction的第一个byte改成`0xCC`(即`INT 3`)，CPU在运行时会触发breakpoint exception 即`EXCEPTION_DEBUG_EVENT`的一种，而后把控制权交给debugger，debugger再将原来的byte写回。
+
+如果程序本身有try catch，则在没有debugger的情况下，会直接经历raise exception -> Windows exception dispatcher -> program's exception handlers -> catch it的过程。而有debugger在其中时，会首先通知debugger。只有在debugger选择忽略的时候，才会把控制权交给原来的handler。但如果application的handler本身也没handle他，那么在SEH (structured exception handling)找不到任何可以handle这个exception的handler后，会再给debugger第二次机会(last-chance notification)。如果这时候还是忽略，那么程序就会终止。
+在[`ContinueDebugEvent`](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-continuedebugevent)中，debugger可以选择传入一个status，如果传入`DBG_CONTINUE`，则windows会任务debugger已经处理完了exception，进而这个exception相关的任何信息**不会**被原程序看到。只有在`DBG_EXCEPTION_NOT_HANDLED`时，才会认为这是debugger忽略了first-chance event然后逻辑回到正常的exception handling
+
+关于exception handling，一个simplified picture是
+raise exception $\rightarrow$ kernel processing $\rightarrow$ debugger first chance $\rightarrow$ user-mode exception dispatch (`KiUserExceptionDispatcher`)$\rightarrow$ VEH (Vectored Exception Handlers) $\rightarrow$ frame-based SEH (Structured Excetpion Handler) $\rightarrow$ unhandled processing $\rightarrow$ debugger last chance $\rightarrow $ termination/default
+
+其中，VEH会在stack unwinding之前被唤醒(优先级很高)，因为VEH和具体的stack frame无关，里面都是general的handler。所谓stack unwinding就是从stack上向上找到最近的能handle当前exception的handler后，把下面的stack全部清理掉的过程。而SEH就是传统的exception handling，比如我们定义的try catch block就在此类。
+`KiUserExceptionDispatcher`是进入user mode exception handling的入口。可以被用来注入一些代码，进而在正常exception handling之前执行。
+
+这个点在windows背景的ctf challenge中还是比较重要的，即需要知道在有exception的情况下program整体的logic flow是什么样的，应该去哪里找对应的handler之类的。
+
+hardware breakpoint/watchpoint和software的不同。他们是由CPU的bug register实现的，而不是通过debugger patch指令的形式。因为debug register数量有限，hardware bp/wp的数量也是有限的。(x86/64上通常一个thread只有4个)
+Hardware bp/wp可以break在指定的memory被read, read+write, 或excute的时候触发。即可以是一个execution breakpoint，也可以是一个data watchpoint。设置condition为hit时，产生的event一般是`EXCEPTION_SINGLE_STEP`。因为可以观察data变化，因此在需要监控哪些代码写入了一个不应该写入的变量时比较有用。
+
+这里简单也了解一下linux的debugger。linux上的debugger时基于`ptrace`这个low-level interface，但整体上的设计两者是差不多的。linux使用的是signal而不是windows的exception，比如在stepping的时候对应`SIGTRAP`(breakpoint traps)。在hardware bp/wp上，gdb也可以用watchpoint，然后默认情况下，gdb会优先使用hardware wp，如果用不了再fallback到software bp(即一步一步运行，很慢)。
+
+**Hooks**
+https://github.com/microsoft/Detours/wiki/OverviewInterception
+Inline Hook: 简单来说就是在一个function的prologue阶段覆写instructions (overwrite the in-process binary image)，让他直接jump到另外一个implementation。该实现会有个问题，如果hook在进行完操作(比如记录一些profiling的data)后希望调用原函数，那么会再次调用hook(因为binary直接被覆写了)。因此需要用trampoline来解决这个问题
+假设我们原来的target有若干条instruction被覆写了，
+```asm
+target: 
+    push ebp     ; -> jmp detour
+    mov ebp, esp ; ...
+    push ebx     ; ...
+    push esi     ; ...
+    push edi     ; unchanged
+```
+
+加上trampoline后，
+```asm
+target:
+    jmp detour
+    ...
+    push edi
+
+trampoline:
+    push ebp
+    mov ebp, esp
+    ...
+    jmp target+offset
+```
+
+*注*: instrumentation指的是插入额外代码来记录function call之类数据的手段，而profiling可以基于sampling(即在运行过程中sample一些data)或者instrumentation
+
+值得注意的是在实现上，detour的patch必须是atomic的，不能留patch了一半的代码在内存中。detour完全只修改callee function，不需要任何和caller有关的修改。
+
+IAT-hooking (Import Address Table): 即修改IAT 表中的function pointer。即修改caller使用的指针。当然这个很不安全，因此microsoft将IAT改为了在load后是write-protected的: https://devblogs.microsoft.com/oldnewthing/20221006-07
+
+`SetWindowsHookEx`: 相当于register一个callback，在监控到一些特定event的时候callback会被调用。
+
+**Code/Process Injection**: 和hook不同，code injection即给一个process注入一些external code后让他运行。Windows提供一些特定的api用来写入其他process的VM
+Inject DLL: injector要求在target中load一个DLL，比如一个plugin，然后target用DLL loader加载DLL
+Code injection: 直接向一个在别的thread中分配内存，写入code，执行
+APC (Asynchronous Procedure Calls) injection: 相当于把一个task丢给一个远程thread执行，需要先加入queue
+Thread-context hijacking: 即修改thread的context，相当于控制execution flow
+DLL side-loading: 修改程序依赖的DLL
+
+**Patching**:
+* 热补丁(hot patch): 即直接在运行过程中修改内存数据
+* 冷布丁(cold/static patch): 即在disk上patch好再开始运行
+* SMC(self-modifying code/dynamically unpacked code): 即program本身disk bytes和executed bytes不一样，比如定义了vm，动态解密等。这时候要么在unpack完patch，要么对patch本身进行同样的packing，让程序自己unpack
+
+**PE Relocation**: 如果一个PE不能被load到它要求的base，就需要relocation。因为一些code可能会有基于image base的instruction，如果不相应修改的话，PE会无法正确执行
+`.reloc` section会包含相关的信息，即哪些地方有address-sensitive value
+Section object: 多个进程有不同的mapping，但都能在mapping后访问这一块内存。可以被用于共享内存。
+Relocation是ASLR的前提
