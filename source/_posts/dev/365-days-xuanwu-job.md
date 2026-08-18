@@ -576,5 +576,63 @@ DLL side-loading: 修改程序依赖的DLL
 
 **PE Relocation**: 如果一个PE不能被load到它要求的base，就需要relocation。因为一些code可能会有基于image base的instruction，如果不相应修改的话，PE会无法正确执行
 `.reloc` section会包含相关的信息，即哪些地方有address-sensitive value
-Section object: 多个进程有不同的mapping，但都能在mapping后访问这一块内存。可以被用于共享内存。
-Relocation是ASLR的前提
+Section object: 代表某一片内存有多个mapping。不同进程有不同的mapping，但都能在mapping后访问这一块内存。可以被用于共享内存。
+Relocation是ASLR的前提。
+我们可以intercept这个过程来试图让dll被map到我们希望的地址: 本来是 DLL name -> 找到image -> 创建section object -> map -> 选择virtual address -> apply relocation
+其中，我们可以intercept `ZwOpenSection`去影响哪个section object会被使用; 通过`ZwMapViewOfSection`影响这个section object会被map到哪。
+`ntdll.dll`是一个特殊dll，包含很多native api和loader的infra，在process init的早起阶段就有参与。所以当我们可以用hook等手段去操作的时候，一般`ntdll`已经map过了。因此这个手段对他没有效果。
+
+### Day 8
+Linux从booting到kernel
+主要资料为: https://0xax.dev/books/linux-inside/
+这个写的非常好，因此下面的notes基本上可以被认为是上文的缩减+翻译版本。
+
+#### 从bootloader到kernel
+按下电源按钮后，motherboard会给power supply发送信号要求供电，在mohterboard接收到power good signal后会让CPU开始运行。在x86-64上，CPU一开始会在real mode中运行，即软件可以无限制直接访问物理内存，没有VM layer。该模式一共有20bit可以用来address(即1M的addressable memory)。
+在旧的8086 processor上，register只有16bit，因此需要用memory segmentation的办法，用两个register(一个表示segment一个表示offset)来确定一个内存位置。在更现代的CPU上，尽管physical bus变宽了，但real mode时的地址计算仍然基于类似逻辑。
+
+在系统power on的时候，CPU会reset并设置`ip`等register的值。然后CPU会计算出第一条instruction的位置，在比较新的x86系统上都是`0xffff_fff0`，这个也被称作reset vector。这里通常会包含一些jump instruction指向BIOS或者UEFI的entry point。
+
+对于BIOS，首先会进行POST(power-on self-test) routine检查，然后找到一个OS去启动。BIOS有一个boot order，存在config里。(用双系统的话应该很熟悉这个) 当BIOS试图从harddrive boot的时候，首先寻找一个boot sector。比如，对于有MBR (master boot record) partition layout的hard drive来说，boot sector会存在第一个sector的前446 bytes。第一个sector的最后两个bytes的值固定。BIOS找到一个可用的boot sector后会将其复制到`0x7C00`然后开始执行。
+
+接下来控制权就被交给了boot loader。Linux有boot protocol指出一个bootloader需要满足什么条件来支持linux boot。这里主要介绍GRUB 2，对于linux user来说如果曾经有因为某些原因处理磁盘不慎，大概率是见过grub的页面的吧。
+
+bootloader的唯一目的就是，载入core image然后jump to it。首先需要把core image载入内存(一般就存在磁盘中第一个sector后面)，然后进入`grub_main`，初始化console，设置root device (即读如modules和config的磁盘)，load and parse config，load modules。然后我们就会看到熟悉的grub menu，可以选择load哪一个os。
+
+最终，bootloader成功载入kernel和kernel的setup code，然后jump到了目标address。kernel setup首先要从real mode切换到protected mode(字面意思，有vm，paging等特性的mode，同时也允许更长的地址)，最终进入到long mode(即可以使用64b instructions/registers的mode)。然后configure kernel decompressor，去decompress kernel再jump过去。
+
+在jump到`start_of_setup` label后，setup code开始真正工作。
+首先让`ds`和`es`这两个segment registers相同，然后清除direction flag (即控制string processing的direction的flag)。目的是为了之后清理bss部分。然后是准备过渡到C code，先要设置 stack，然后check Magicnumber确保正在运行一个valid linux kernel setup binary，再清除`.bss`段。然后就可以执行`main.c`了！
+
+
+更多关于Protected mode: protected mode中使用global descriptor table (GDT)去管理memory segmentation。每个descriptor都是64b长，仍然是20个bit的limit，但有一个特殊的G bit表示这个limit指的是bytes还是pages。因此最多能表示的segment size是4GB。
+比较有意思的是对code segment有常规的RX bit。然后实际上code可以是execute-only的。在linux上，一个execute-only的binary即不能被用户打开，但可以直接执行。不过这不能阻止用户用debugger然后观察内存中的行为。
+
+#### 进入main.c
+main function的第一件事就是`init_default_io_ops`，即初始化用来读写一个IO port的function pointer。然后将header copy到C的`boot_params` struct中。注意此时还没boot完，所以使用的`memcpy`是kernel内部的实现而不是clib的`memcpy`。
+
+简单看一下memcpy的实现，其实就是用`rep movsl`每次copy 4个bytes，再用`rep movsb` copy剩下的几个byte。
+
+接下来就是initialize console，然后就可以print了。再initialize heap，也很简单，就直接根据config中的`heap_end_ptr`设置一下就可以。然后需要`validate_cpu`，检测cpu是否满足kernel要求。然后检测可用的memory，这一步需要询问system的firmware来获得物理内存相关的信息。具体来说，kernel需要唤起BIOS interrupt，用一个特殊的BIOS interface来检查内存。在dmesg中我们可以看到BIOS-provided physical RAM map，包括哪些是usable的。在内存检测完成后，kernel继续initialize keyboard。
+
+需要注意的是这里的heap，stack，bss和我们说的process vm里的这些segment并不完全一样(尽管概念上大致相同)
+
+#### Video Modes
+Video mode指的是一个预先定义好的screen configuration，负责提供分辨率，色深，text/graphic等信息。
+传入`vga=ask`可以看到所有可以选择的mode
+Video mode相关的params会被存到heap上的一个struct。在设置完video mode后就可以准备进入protected mode了
+
+在`go_to_protected_mode`中，首先会调用real mode switch hooks，如果没有hook则会disable NMI (Non-maskable interrupt)。disable NMI很重要，因为在switch的过程中，没有任何valid handlers可以去处理interrupt。在成功切换mode后，interrupt会被重新enabled。NMI即不管permission如何都会直接执行的interrupt。在disable后会调用`io_delay`，原地等待大约1ms确保interrupt已经被disabled
+
+然后需要enable A20 line (address line 20，用来传地址)，这个会允许kernel处理1M以上的内存。再reset math coprocessor (比如FPU, floating point unit)
+
+如前面所说，所有interrupt都要disable。所以接下来也要disable所有PIC(Programmable interrupt controller)上的interrupt
+
+在进入protected mode前还有两步: 设置Interrupt Descriptor Table和Global Descriptor Table (这个在前面提到过了)
+在Real Mode中，interrupt handling基于interrupt vector table，而在protected mode中会基于interrupt descriptor table. 这个设置起来也很简单，直接load一个空的就行。
+在initialization的时候，GDT包含三个segment: Code(`CS`), memory(data, `DS`), task state(`TSS`, used for intel VT virtualization)
+
+`CS`和`DS`的limit都被定义为`0x0`到`0xffff_ffff`. (Flat memory model设计)
+然后就可以进入protected mode了！asm中用的一个小技巧是，用一个原地的jump来保证cpu丢弃prefetch的real mode下的instruction。
+
+实际上并没有太多复杂的东西，关键在于，我们如何和硬件交互。后面三小章简单浏览了下，这里就不记录notes了。
