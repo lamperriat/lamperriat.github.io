@@ -636,3 +636,48 @@ Video mode相关的params会被存到heap上的一个struct。在设置完video 
 然后就可以进入protected mode了！asm中用的一个小技巧是，用一个原地的jump来保证cpu丢弃prefetch的real mode下的instruction。
 
 实际上并没有太多复杂的东西，关键在于，我们如何和硬件交互。后面三小章简单浏览了下，这里就不记录notes了。
+
+### Day 9
+原仓库的这一节是有关android安全，内容比较杂。这里主要选取几个领域，并且主要基于官方的document进行简单的学习。并不会很深入。
+References:
+* 官方security tips(https://developer.android.com/privacy-and-security/security-tips)
+* OWASP MASTG(https://mas.owasp.org/MASTG/): 基本可以当wiki看，非常全面，涵盖各种mobile security的testing和RE技巧 
+
+Android的基本Security model: sandbox + IPC (inter-process communication)
+基本的assumption是，applications do NOT trust each other。每个application都有一个unique的Linux UID，然后都是在sandbox中运行，这是在kernel level就强制的。
+一个UID所拥有的资源(files和processes)对其他UID并不直接可见，必须借助IPC通信(主要通过Android Binder)。在此之上也有更高level的 abstraction，比如Intent (用来要求其他app component进行一个操作), Services (进行长时间后台活动), ContentProvider (允许app安全分享数据或者获取system-wide数据)。
+Android使用AIDL (Android Interface Definition Language)去定义IPC的interface。
+Binder是android底层的IPC机制。可以认为，exported binder service，就类似于一个本地的API endpoint可以给其他app使用。因此要和处理web server时暴露哪些http endpoint一样谨慎。
+
+`Intent`是描述一个operation的message。explicit intent即直接指明一个target，implicit即描述谁应该来handle这个intent。其中，如果使用mutable pending intent，外部有可能可以通过修改这个intent来以当前applicator的身份进行一些操作，是比较危险的。
+
+AndroidAPK即安装包，包含
+* `AndroidManifest.xml`: 包括很多信息，包括permissions，activitites，services，app的configuration之类的。一般在RE的时候第一个要看的就是这个。
+* `classes.dex`: 编译好的bytecode。在比较新的android上一般会用jit加速，在老的android则直接用Dalvik Virtual Machine (DVM)直接运行。
+* `lib/`: native libraries
+* `res/`, `assets/`, ...
+
+每个APK必须被signed。开发者必须sign整个apk。attacker如果修改了其中任何内容，则signature都会失效
+
+Android Attack Interface: 和app security有关的主要是下面这几个components 
+* `Activity`: 控制UI/screens
+* `Service`: 控制background/api-like的功能，有unauthroized privileged operations的风险
+* `BroadcastReceiver`: 接受event messages，可能会有假的broadcast
+* `ContentProvider`: 如前面所说，这个是用来share data的，因此有unauthorized R/W的风险
+
+在manifest中，我们可以设置`android:exported="false"`，来让所有的component只能被这个app自己access/trigger。
+
+Data: 
+* Storage: 最安全的储存是app-private internal storage，即在sandbox内仅自己可见。所有外部存储都有一定程度风险
+* Network: use TLS。(SSL pinning: embed/hardcode SSL certificate or public key)
+* WebView: 这个东西还挺臭名昭著的，即在app中embed一个broswer。在这里我们不管性能问题，但安全上需要防止web content通过js来触发原生app的一些功能。也就是对WebView的file access之类的功能应该进行一些限制。
+* Secrets: Android keystore，由os提供的隔离程度更强的managing keys的一个system
+
+Android RE的基本工具:
+* `jadx`: decode manifest/resources，decompile code，总之就是上手第一个用的工具
+* `adb`: android上的debugger。可以配合emulator一起使用
+* `frida`(https://github.com/frida/frida): dynamic intrumentation tool，可以加hook或者做一些injection
+* 其他通用工具，比如用ghidra来RE apk中调用的`.so` file，或者用burp suite截取流量等。
+
+Androi anti-RE工具:
+* `ProGuard`, `DexGuard`进行obfuscation
