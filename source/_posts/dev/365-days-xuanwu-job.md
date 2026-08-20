@@ -681,3 +681,47 @@ Android RE的基本工具:
 
 Androi anti-RE工具:
 * `ProGuard`, `DexGuard`进行obfuscation
+
+
+### Day 10-11
+这部分讲的是供应链攻击，最近也经常听到类似新闻。这两天以概念为主，因此合并
+
+软件供应链：软件是由代码、第三方库(dependencies)、开发工具、构建环境、分发渠道、更新服务等共同生产出来的。
+在今天，整个链条可以被认为是 source -> dependencies -> build -> CI/CD -> publish -> registery -> install -> runtime
+只要有一个节点被攻击，整个链条都会被影响。
+
+Ken Thompson's Trusting Trust attack: 即使源代码是安全的，不意味着最终的binary就是安全的。如果编译器被恶意修改，在编译特定部分的时候插入backdoor，那么binary也会是insecure的。这个观点继续递归，比如compile compiler source的compiler可能不是safe的。
+在现代的开发中，我们需要trust的东西太多了，而其中每个步骤实际上都可能被污染。
+因此现在强调一些source code review之外的技术/步骤: 
+* reproducible builds
+* build provenance: verifiable, cryptographically signed record，记录一个软件是如何build出来的，包含source code, build tools, inputs和详细步骤
+* SBOM (software bill of materials): machine-readable inventory of all the components, libraries, dependencies that make up a software app
+* SLSA (supply-chain levels for software artifacts): 一个开源的框架用来establish software provenance
+
+案例: 2015年XcodeGhost。攻击者给Xcode上传了一个malicious version的Xcode，然后被开发者下载。该软件在build的过程中会inject一些malicious的object files，进而获取sensitive data。这个供应链上游的攻击可以影响到非常多的ios app
+案例: 2017的CCleaner。CCleaner事一个清理工具，attacker通过偷取公司员工的credentials来获取内部网络，然后将原来的installation file替换为了他的包含backdoor的版本，进而将敏感信息送到他的server。可以看出，供应链攻击的一个重要性质就是利用信任。用户信任软件厂商，一旦成功从供应链上游攻击，这个信任会让用户直接使用被恶意替换的软件。
+案例: 2017的NotPetya。通过攻击软件更新渠道来分发，然后利用著名的永恒之蓝漏洞(eternal blue)去传播。用户天然信任这些软件更新的渠道，大部分人不会产生额外怀疑。
+
+Dependency graph: 只要软件的任何一个indirect dependency是malicious的，这个软件都会受到影响。Dependency graph会帮助我们分析一个问题的blast radius。
+
+攻击者的污染路径:
+* source-code: 攻击者拿到maintainer account/ssh key，直接修改源码。这种在CR的时候一般比较容易被发现(但我印象里也有植入的代码一路活到release的例子)
+* build-time compromise: 攻击build environment，让clean source build出malicious artifact
+* typosquatting: 这个很经典。在用包管理器安装的时候，很容易在package name里出现typo进而安装了别的package。因此attacker可以故意注册一些相似的名字来诱骗用户。在npm和PyPI中都非常常见。不过现在包安装很多时候都让ai agent处理，人类typo的问题倒是减少了也说不定
+* dependency confusion: 一个闭源软件本来用的是内部版本的package，attacker发布一个名字相同的public package，版本很高。这样本来包管理器应该用内部的private版本，但解析逻辑优先选择了外部的更高版本，就会无意间安装malicious package。攻击者只需要知道内不得package name就可以执行攻击
+* npm life cycle scripts: `npm`中可以定义一些scripts (hooks)，比如`npm install`时自动执行`preinstall`, `install`, `postinstall`对应的scripts。攻击者可以通过phishing来偷取credentials，然后修改发布一个malicious的版本。这个比直接在代码中注入backdoor更隐蔽。
+
+2025年9月，攻击者攻击了18个高流量的JS packages，包括`chalk`, `debug`等。其使用的攻击手段就是通过phishing来获得一个major maintainer的账户信息。攻击者注入了highly obfuscated script，针对cryptocurrency的交易进行攻击。
+还是2025年9月，Shai-Hulud attack。这应该是近期最大的供应链攻击，仍然是针对npm的。该攻击利用的是`preinstall` script，在installation完成前便直接执行恶意代码。该攻击自动扫描环境窃取credentials并且self-replicating，影响了非常多的packages和开源仓库，包括一些非常著名的。
+
+相当多的攻击依靠假软件，repackaged软件，假updates，低质量广告引流等方式。在如今，这一类攻击甚至更加进化，攻击者的目标不只是user，更是developer/maintainer，只要成功一次就可以影响非常大范围的软件和用户。
+
+一些重要的理念:
+* lockfile应该提交进git。lockfile可以提高build的确定性，防止因为一些更新而引入malicious code
+* cool-down period: 不要立刻更新最新版本。等待一段时间后，软件被证明没有问题了之后，再去更新
+* SBOM (software bill of materials): 前面提到过，就是用来快速检测，在某个包的某个版本被发现有问题后，自己分发过的软件里是否曾经有用过这个特定的版本的包。
+* provenance: 回答这个包在哪个repo哪些commit由哪个workflow在哪个env产生的问题
+* Trusted-publishing (OIDC, OpenID connect): 即软件发布不应该直接使用一个`NPM_TOKEN`，而是需要OIDC(基于OAuth2的认证) identity。长lifetime的token本身就是不够安全的，一旦被偷，blast radius会很恐怖。现在，maintainer identity的security就直接和software supply-chain security挂钩，再加上2FA/MFA的推广，可以有效组织供应链攻击。
+
+### Day 12-14
+这部分讲的是用graph工具分析security，但这个感觉不是特别重要，因此跳过了。
