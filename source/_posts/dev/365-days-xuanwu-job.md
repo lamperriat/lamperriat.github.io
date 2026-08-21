@@ -725,3 +725,35 @@ Dependency graph: 只要软件的任何一个indirect dependency是malicious的�
 
 ### Day 12-14
 这部分讲的是用graph工具分析security，但这个感觉不是特别重要，因此跳过了。
+
+### Day 15
+Fuzzing: 思想很简单，就是不断构造随机的输入给程序，然后捕捉crash，各种bug。
+原文给到的fuzzingbook中有对于fuzzing的基本介绍: https://www.fuzzingbook.org/html/Fuzzer.html
+
+现代的fuzzer有一些更加高级的feature，比如，根据feedback来自己evolve inputs。
+一些概念:
+* harness (这个harness要比如今的harness engineering的概念出现得早得多): 即一小段code把fuzzing引擎和实际想要测试的代码连接起来。一个好的harness应该exercise meaningful functionality，而把无关要素去除。尽可能deterministic，保证可以复现结果。target越narrow，效果越好
+```cpp
+// libFuzzer example
+// fuzz_target.cc
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
+  DoSomethingInterestingWithMyAPI(Data, Size);
+  return 0;  // Values other than 0 and -1 are reserved for future use.
+}
+
+```
+* corpus: 即input的集合。可以理解为一个压缩的，已经被发现，代表程序不同行为的东西。我们希望保证corpus尽可能小的同时不影响coverage
+* mutation: 修改已经有的input来获取新的input，比如flip一个bit，duplicate一个区域，swap两块区域，insert一些bytes之类的。对于图像一类的输入，mutation的效果往往很好。一个fuzzer可以进行一些mutation，然后看看是否跑到了新的code，存下这个mutation，再进一步修改。因此fuzzing可以分为mutation-based和generation-based
+* coverage feedback: 现代fuzzer一般是coverage-guided的。fuzzer会追踪edge/block coverage, counters, 以及一些其他信息，来保证如果input cover到了新的区域，就存入corpus中
+* sanitizer: 即检测memory-safety，ub，或者其他行为的工具。写C++的应该非常熟悉这些。
+* in-process execution: fuzzer的速度很重要。in-process fuzzer可以不用每个test都重复一遍起进程+exit的过程。但是必须保证每次跑的test都是isolated的。在一个process中跑就失去了process天然带来的isolation，因此需要保证不会有global state留下而影响后面的test
+* dictionary: 已知的有意义的一串bytes/tokens
+* CMP/value feedback: 通过一些方式让fuzzer知道一些CMP里的operands，可能是某些magic numbers
+* structured fuzzing: 针对SQL之类的有结构的语言，如果结构错了会被parser立刻拒绝。所以需要让fuzzer知道这个结构，然后在结构(比如以AST表示)上修改
+* crash detection: 在crash之后需要记录input以便于复现
+* crash triage: reproduce+minimize testcase+symbolize，然后deduplicate。目的是去除不同test检测到的同一个bug
+
+Reference: https://llvm.org/docs/LibFuzzer.html
+
+第二部分关于[`r2`](https://github.com/radareorg/radare2)，我个人感觉ghidra在使用体验上还是要比r2更胜一筹。但r2胜在他是cli+tui，因此更加AI-friendly。
+[`r2pipe`](https://book.rada.re/scripting/r2pipe.html)允许将r2结合其他语言一起使用，比如结合python script。这个只需要了解一下，实际使用的话可以告诉ai本机已经安装这些工具，ai会自己使用的。
