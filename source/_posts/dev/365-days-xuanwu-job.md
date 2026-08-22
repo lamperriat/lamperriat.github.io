@@ -757,3 +757,33 @@ Reference: https://llvm.org/docs/LibFuzzer.html
 
 第二部分关于[`r2`](https://github.com/radareorg/radare2)，我个人感觉ghidra在使用体验上还是要比r2更胜一筹。但r2胜在他是cli+tui，因此更加AI-friendly。
 [`r2pipe`](https://book.rada.re/scripting/r2pipe.html)允许将r2结合其他语言一起使用，比如结合python script。这个只需要了解一下，实际使用的话可以告诉ai本机已经安装这些工具，ai会自己使用的。
+
+### Day 16
+Reference: 
+https://www.fuzzingbook.org/html/Coverage.html
+https://clang.llvm.org/docs/SourceBasedCodeCoverage.html
+https://clang.llvm.org/docs/SanitizerCoverage.html
+Code Coverage: 用来测试或衡量 fuzzing或testing 的效果的指标。
+
+Black-box testing: 把程序当black-box看待，直接test期望的behavior
+White-box testing: 从源代码考虑测试。测试的是implemented behavior
+* Statement coverage: 每个statement必须被至少一个input执行到
+* Branch coverage: 每个branch指少被一个input执行到
+
+Clang的source-based code coverage feature是基于AST和预处理信息的，因此结果会十分准确。
+Clang提供SanitizerCoverage和gcov(gcc-compatible implementation)。SanitizerCoverage非常强大，由各种功能，可以track各种数据，可以自己定义callback。编译器在打开特定编译选项的时候，会在一些位置插入`__sanitizer_cov_trace_*`来达成tracing的目的。
+
+我们用`-fprofile-instr-generate -fcoverage-mapping`选项就可以开启coverage。如果开启了和没开启的code link到一起，没开启coverage instrument的code会在report中被忽略。另外，可以用`-fcoverage-mcdc`开启modified condition/decision coverage(MCDC)
+我们可以用`llvm-cov`不同的选项查看report，report会清晰展示各种信息，比如branch coverage info (true/false的次数)，functions, regions, statements，很详细。
+
+原repo的第二部分都是很general的一些concept，这里总结一下
+* Abstract Interpretation: 用更简单的abstract domain来代表一个更大的concrete program的集合
+* CFG (Control-flow analysis/graph): 即分析control flow
+* Data-flow analysis: 即分析data如何通过CFG传播
+* Interprocedural analysis: 分析信息如何通过function call传播。framework: IFDS, IDE
+* Sparse/value-flow analysis: 并不直接通过完整的CFG传播所有信息，而是只考虑有用的。用来降低计算
+* Taint analysis: 分析sensitive info如何传播，或者分析input如何传播(本质都是分析特定数据的传播)
+* Symbolic execution: 即用symbolic value去执行。会有path explosion的问题
+* Concolic execution: 即结合execution和symbolic reasoning
+* Intermediate representations (IRs): 学过编译原理的应该了解，就是一种在source和binary之间的中间表达形式
+
