@@ -787,3 +787,44 @@ Clang提供SanitizerCoverage和gcov(gcc-compatible implementation)。SanitizerCo
 * Concolic execution: 即结合execution和symbolic reasoning
 * Intermediate representations (IRs): 学过编译原理的应该了解，就是一种在source和binary之间的中间表达形式
 
+Day 17 第一部分已经被上面覆盖，第二部分没什么好学的，都是python基础。
+
+### Day 18
+第一部分主要是AFL (american fuzzy loop)，这是一种greybox fuzzing的手段，即根据哪些case增加了coverage来动态调整input。仍然是基于mutation的，感觉没有太多好说的。
+
+第二部分比较有意思。
+References:
+* https://www.comp.nus.edu.sg/~gregory/papers/e9patch.pdf
+* https://github.com/GJDuck/e9patch
+
+这篇paper的出发点是，常见的binary rewrite tools大都基于从binary中完整recover出control flow information，但这件事本身是困难的，对于很大的binary基本不可能准确恢复。因此作者提出在不了解任何control flow信息的基础下去rewrite x86-64的binary。因此，即使是对很大的binary，也可以进行操作。
+
+最基本的一个操作是，直接修改某个instruction，用来插入一个jump。但x86的instruction是variable-length的，也就是会遇到短的instruction而无法插入一个jump。最简单的处理办法(在之前windows的detour工具那里也有提到)，就是用trampoline，把覆写的instruction一起搬走，但这会引来一个问题，就是原binary可能本来就存在能jump到这一块指令的jump，搬走直接就打破原本的运行逻辑了。因此，E9patch的目的就是，在保证每个instruction，要么被完整保留，要么被替换为等价instruction，要么被替换为我们需要的instruction，的前提下，修改binary。
+
+x86-64的基本patching方法包括:
+* 用`int3`触发exception(windows)/signal(linux) handler来获得控制权。这也是我们提到过的，debugger所使用的机制。由于需要切换kernel/user mode，该方法性能不太行
+* jump to trampoline。比如relative near jump `jmpq rel32`是一个5B长的instruction。对于长的instruction，可以直接patch成jump。这个方法存在前面提到的问题，对于短的instruction可能会有问题
+* Instruction punning: 找到一个特殊的`rel32`的值，来保证只把指令修改成jump，而后面的几个instruction的bytes可以保持原样，既作为我们的target，又本身保持有效。
+
+比如，原本是`mov rax, rbx`, 即
+```
+48 89 03 | 48 83 c0 20
+mov      | other instructions
+```
+现在，我们利用本来存在的`48 83`，只把`mov`修改成`jmpq`
+```
+e9 XX XX 48 83  | c0 20
+jmpq 0x8348XXXX |
+```
+
+该方法的问题是，trampoline的地址会被限制，甚至由于地址直接指向invalid address而无法使用。
+
+在这些方法基础上，作者提出了其他几个tactic，即使punning失败，也可以有别的性能不错的fallback。
+一个有趣的点，在x86这样的variable-length instruction set上，disassembly并非一件容易的事。因为我们并不知道哪里是一条instruction开始的offset，而binary中可能会有各种padding之类的东西干扰对instruction offset的判断。另外一个挑战是，很难区分binary中code和data。这一点在fixed-length的指令集，比如aarch64上也同样成立。
+作者提出的几个tactic:
+* 往jump前面pad几个垃圾byte，继续用前面的例子，pad完可以变成`48 e9 XX 48 83 c0`，即pad一个`48`，这样可以用上更后面的byte，拓宽可能jump的范围
+* Successor eviction: 找一个victim instruction (在这里就是下一条instruction)，给他换成一个evictee trampoline，即一个jump，但这个jump的目的只是运行原来的instruction，然后jump回来。比如本来是`mov; add; ...`现在变成`mov; jmpq trampoline; ...`，`trampoline: add`。这样我们就可以对不一样的instruction执行punning，原先add的byte会变成jmpq的byte。
+* Neighbor Eviction: 更加复杂一点，ideal还是一样的。用一个short jump来jump到周围的某一个victim，而不是只是找successor。
+* 对于需要patch多个instruction的情况，作者提出reserve order patching，即为了防止patch之间相互干扰，在patch的时候需要lock上一些不允许修改的instruction
+
+此外，作为优化，作者提出了physical page groupping，即把我们需要的trampoline丢到一个physical page里，然后再mmap好几次。这样可以节省实际占用的physical page的数量
