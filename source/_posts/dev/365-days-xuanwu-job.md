@@ -828,3 +828,41 @@ jmpq 0x8348XXXX |
 * 对于需要patch多个instruction的情况，作者提出reserve order patching，即为了防止patch之间相互干扰，在patch的时候需要lock上一些不允许修改的instruction
 
 此外，作为优化，作者提出了physical page groupping，即把我们需要的trampoline丢到一个physical page里，然后再mmap好几次。这样可以节省实际占用的physical page的数量
+
+### Day 19
+原repo中作者找了个10年前的远古工具。
+Program Slicing指的是一件很简单的事情: 在这个program中，找到所有和一个指定variable有关的slice。
+步骤也很简单: 首先获取AST，然后通过ast获取变量之间的load/store关系，比如`a = b+1`，那么`a`和`b`就需要被连，在forward slicing中就是`a->b, line no.`。在获得所有的dependency关系后，我们就获得了一个dependency graph，然后只需要traverse这个graph我们自然就可以获得所有和`a`有关的variable或statement。
+
+但上述实际上只是一个简单化的模型。类似我们提到的taint analysis，program slicing中如果我们希望分析各种分支，函数调用，那么仍然是依赖于CFG (control flow graph)的。而建立CFG显然是困难的，因为我们的program中需要分析的分支和函数是指数级的。
+
+这里和原文不同，了解的是，这些看起来很抽象的算法或者工具，是如何被运用到实际生产中的。
+Reference: https://github.com/github/codeql
+
+这些工具最主要的用途之一就是Static Application Security Testing (SAST)工具。一个例子就是codeql。
+如官网所说，codeql的目的是，像查询数据一样查询代码，消除所有bug的变体。
+比如可以用codeql查找，source时user input而sink是一个filesystem path的所有flow。codeql既有local data flow也有global data flow
+
+另外，所有的compiler中都会运用类似的技术去进行优化。比如检测哪些code是dead code，进行const propagation，知道哪些变量是alias等。
+
+这些工具并不会每个branch分开分析，而是merge。比如`a = 3 if ... else 4`，那就直接不管branch，让$a\in {3,4}$。为了进一步节省资源，可以进行abstract interpretation，比如对于int来说只需要有`negative, zero, positive, unknown`四种状态。
+
+path insensitive的设计会大幅降低开销，但也就无法进行精确的分析。比如
+```c
+if (authed) {
+    x = trusted_val;
+} else {
+    x = untrusted_val;
+}
+
+if (authed) {
+    do_something(x);
+}
+```
+
+这种在merge branch后会消失的语意是path insensitive分析无法处理的。
+所以分析工具一般会提供不同"颗粒度"，比如path sensitive/insensitive, context sensitive/insensitive。为了确保效率，相当于analyzer会故意遗忘一部分信息。
+
+Framework: https://dl.acm.org/doi/10.1145/2259051.2259052
+
+Day 20原文的e9patch已经学习完毕，因此暂定改为codeql的实践。
