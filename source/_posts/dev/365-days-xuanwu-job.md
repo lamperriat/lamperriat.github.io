@@ -866,3 +866,5 @@ if (authed) {
 Framework: https://dl.acm.org/doi/10.1145/2259051.2259052
 
 Day 20原文的e9patch已经学习完毕，因此暂定改为codeql的实践。
+
+8.25记: 因为要参加tiktok techjam，最近几日暂停更新
