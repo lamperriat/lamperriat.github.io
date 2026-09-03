@@ -868,3 +868,206 @@ Framework: https://dl.acm.org/doi/10.1145/2259051.2259052
 Day 20原文的e9patch已经学习完毕，因此暂定改为codeql的实践。
 
 8.25记: 因为要参加tiktok techjam，最近几日暂停更新
+
+9.2记: 恢复更新!
+
+### Day 20
+CodeQL实践基于我自己的[个人网站](https://github.com/lamperriat/atelier)。
+
+首先从github release page下载codeql的bundle，然后本地随便找个地方放一下加到path。然后我们到目标目录下创建project的database
+```sh
+export ATELIER_ROOT="/Users/lamperriat/Documents/projects/atelier"
+export CODEQL_LAB="$ATELIER_ROOT/tmp/codeql-workshop"
+export CODEQL_DB="$CODEQL_LAB/db-go"
+export CODEQL_RESULTS="$CODEQL_LAB/results"
+mkdir -p "$CODEQL_RESULTS" "$CODEQL_LAB/logs"
+
+codeql database create "$CODEQL_DB" \
+    --language=go \
+    --source-root="$ATELIER_ROOT/backend" \
+    --build-mode=autobuild \
+    --extractor-option extract_tests=true \
+    --threads=0 \
+    --logdir="$CODEQL_LAB/logs"
+```
+
+在`$CODEQL_DB/codeql-database.yml`中会包含关于这次构建的基本信息。我们可以大致检查一下，确认这次构建没有问题。我们可以查看本地的QL packs，和一些queries对应的ql文件
+```sh
+codeql resolve packs | rg 'codeql/go-(all|queries)'
+codeql resolve queries \
+  'codeql/go-queries:codeql-suites/go-code-scanning.qls' 
+```
+
+一个qls会被resolve到很多的`.ql`文件。有三个Go的predefined query suite: 
+* `go-code-scanning.qls`: default, high-confidence queries。findings更少，false positive也更少
+* `go-security-extended.qls`(包含上面那条的所有检查): default, 加上一些额外的security queries
+* `go-security-and-quality.qls`(包含上面两条的所以检查): 更多检查，更多noise
+
+那么让我们来运行一下试试
+```sh
+codeql database analyze "$CODEQL_DB" "codeql/go-queries:codeql-suites/go-code-scanning.qls" \
+  --format=sarifv2.1.0 \
+  --output="$CODEQL_RESULTS/default.sarif" \
+  --sarif-category='go/default' \
+  --sarif-add-baseline-file-info \
+  --threads=0
+```
+
+我们可以用`jq '.'`来format输出的sarif(实际是json)直接看，也可以用`jq`查看
+```
+jq '.runs | length' "$CODEQL_RESULTS/default.sarif"
+jq '.runs[].results | length' "$CODEQL_RESULTS/default.sarif"
+```
+
+得到的结果是1和0，即扫描成功但没有结果，也就是没有生成任何alert。
+我们尝试一下检查最多的scan
+```sh
+codeql database analyze "$CODEQL_DB" "codeql/go-queries:codeql-suites/go-security-and-quality.qls" \
+  --format=sarifv2.1.0 \
+  --output="$CODEQL_RESULTS/security-and-quality.sarif" \
+  --sarif-category='go/security-and-quality' \
+  --sarif-add-baseline-file-info \
+  --threads=0
+```
+非常可惜结果还是空的。看来6k行代码的小仓库在有ai review的情况下确实不太容易出security bugs。没有关系，我手动引入一个sql injection的vulnerability。
+```go
+func registerCodeQLSQLInjectionDemo(db *sql.DB) {
+	http.HandleFunc("/codeql-lab/quiz-search", func(w http.ResponseWriter, r *http.Request) {
+		title := r.URL.Query().Get("title")
+		query := "SELECT uid FROM quizzes WHERE title = '" + title + "'"
+        ...
+	})
+}
+```
+
+这次可以看到
+```sh
+jq -r '
+    .runs[].results[]? |
+    [
+      .ruleId,
+      .message.text,
+      .locations[0].physicalLocation.artifactLocation.uri,
+      .locations[0].physicalLocation.region.startLine
+    ] |
+    @tsv
+  ' "$CODEQL_RESULTS/sql-injection-default.sarif"
+go/sql-injection        This query depends on a [user-provided value](1).       internal/apps/quizme/codeql_lab.go      16
+```
+
+然后我们来尝试自定义query。首先安装vscode的codeql extension，然后选择一个db，指定本地的codeql的path(虽然extension会自己下载一个)
+```sh
+codeql pack init \
+  --dir="$CODEQL_LAB" \
+  --extractor=go \
+  --version=0.0.1 \
+  atelier/codeql-workshop
+export CODEQL_QUERIES="$CODEQL_LAB/codeql-workshop"
+codeql pack add --dir="$CODEQL_QUERIES" codeql/go-all
+```
+其中`pack add`是用来添加dependency的。
+
+然后我们创建一个`EnvironmentReads.ql`: 
+```codeql
+import go
+
+from Function lookupEnv, CallExpr call
+where
+  lookupEnv.hasQualifiedName("os", "LookupEnv") and
+  call.getTarget() = lookupEnv and
+  not call.getFile().getRelativePath().matches("%_test.go")
+select call, "Application code reads environment-backed configuration here."
+```
+
+也就是找到符合
+* 函数名是`os.LookupEnv`
+* call expression是这个函数名
+* 不在`_test`文件中
+
+的所有call的位置
+
+在VSCode中ctrl/cmd+shift+p选择`run query on selected database`即可查看结果。我这里找到了`config.go`中的两处调用。
+
+我们也可以用CLI运行。首先format+检查
+```sh
+codeql query format --in-place "$CODEQL_QUERIES/EnvironmentReads.ql"
+codeql query compile --check-only "$CODEQL_QUERIES/EnvironmentReads.ql"
+```
+
+注意如果前面使用了CodeQL extension，现在需要暂时disable掉，不然会lock住不能再CLI执行。然后执行
+```sh
+codeql query run \
+  --database="$CODEQL_DB" \
+  --output="$CODEQL_RESULTS/environment-reads.bqrs" \
+  "$CODEQL_QUERIES/EnvironmentReads.ql"
+```
+
+查看结果
+```sh
+codeql bqrs info "$CODEQL_RESULTS/environment-reads.bqrs"
+
+codeql bqrs decode \
+  --format=csv \
+  --entities=url,string \
+  --output="$CODEQL_RESULTS/environment-reads.csv" \
+  "$CODEQL_RESULTS/environment-reads.bqrs"
+```
+
+打开csv文件就可以看到结果了。
+
+我们来跑一个更复杂的。我的project中使用了OAuth，因此会有token的流动
+```go
+token, err := h.googleOAuthCfg.Exchange(ctx, code)
+...
+userInfo, err := h.getGoogleUserInfo(ctx, token.AccessToken)
+
+func (h *Handler) getGoogleUserInfo(ctx context.Context, token string) (*GoogleUserInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleUserApiUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+    ...
+}
+```
+
+我们可以用`TaintTracking`来追踪token到outbound request的路径
+```codeql
+import go
+
+module TokenToHeaderConfig implements DataFlow::ConfigSig {
+  predicate isSource(DataFlow::Node source) {
+    exists(Parameter p |
+      p.getName() = "token" and
+      p.getFunction().getName().matches("get%User%") and
+      source = DataFlow::parameterNode(p)
+    )
+  }
+
+  predicate isSink(DataFlow::Node sink) {
+    exists(Method setHeader, CallExpr call |
+      setHeader.hasQualifiedName("net/http", "Header", "Set") and
+      call.getTarget() = setHeader and
+      call.getArgument(0).getStringValue() = "Authorization" and
+      sink = DataFlow::exprNode(call.getArgument(1))
+    )
+  }
+}
+
+module TokenToHeaderFlow = TaintTracking::Global<TokenToHeaderConfig>;
+
+import TokenToHeaderFlow::PathGraph
+
+from TokenToHeaderFlow::PathNode source, TokenToHeaderFlow::PathNode sink
+where TokenToHeaderFlow::flowPath(source, sink)
+select source.getNode(), source, sink, "OAuth token reaches an outbound Authorization header."
+```
+
+`TokenToHeaderConfig`定义source是`get%User%`函数的名为`token`的param，而sink是`http.Header.Set("Authorization", val)`的函数调用。这个trakcing是global的，因此可能会跨越函数的boundary。这个query在我本地大约compile+run了一分钟，非常缓慢。由于是taint tracking，即使token被修改过，也会被追踪到。最终成功找到所有token进入header的路径。
+
+我们可以定义自己的query suite (`.qls`文件)。就是简单的一个yaml里包含了所有需要include的query。运行的时候和直接运行predefined的那些suite并没有区别。
+对于自己的query，我们也可以设置期望的结果，直接用`codeql test run`运行，然后`codeql test accept`设置expected result。CodeQL也提供database的bundle，便于分享或传输。在query后进行`codeql database cleanup`可以减少磁盘空间占用，即清理缓存的中间结果。
+
+最后，CodeQL可以丢到github action上执行，作为CI/CD的一部分，可以便捷地确保代码的质量和安全性。
+
+
