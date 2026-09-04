@@ -1071,3 +1071,36 @@ select source.getNode(), source, sink, "OAuth token reaches an outbound Authoriz
 最后，CodeQL可以丢到github action上执行，作为CI/CD的一部分，可以便捷地确保代码的质量和安全性。
 
 
+### Day 21
+基于个人习惯这里我会更注重Ghidra而不是IDA。
+首先简单浏览一下这个插件: `https://github.com/polymorf/findcrypt-yara/`
+非常简短但是有用的插件。`.rules`文件中定义了很多常见的crypto算法会用到的constant。借此我们可以知道原程序可能使用了哪些算法。不过如果obfuscation做的比较好的话这种简单的扫描应该并不能扫出来。
+
+https://pwn.college/program-security/reverse-engineering
+网站上有一系列简短的RE basics的教学视频，可以作为复习资料使用。
+
+观察编译中间产物: 
+`cpp`: C pre-processor. `cpp [input.c]` 会输出preprocess后的code
+`gcc -S -masm=intel`: 生成intel式的assembly
+`objdump -M intel -d`: 查看binary对应的assembly，intel格式
+`strip [binary]`: strip掉metadata来减小binary体积，包括函数名
+
+Function可以被理解为一个control flow graph，不同的snippet被jump串起来。
+在程序的开始，stack上存有env var和arguments
+
+`fomit-frame-pointer`: 因为很多时候其实并不需要frame pointer `ebp/rbp`，而是可以直接操作`esp/rsp`。比如，一般我们移动esp来分配这个函数的local variable，这个分配的量是确定的，因此编译器完全不需要存`rbp`再用`mov rsp, rbp`来恢复。在现代编译器中，开启优化的时候默认都会开启该选项(减少开销且多一个general purpose register)。坏处是增加了debug的难度(也增加了RE的难度)。但即使开启该选项，在部分情况下仍然无法omit，比如使用C99的VLA(variable-length array)或`alloca`在栈上分配变长数组。此时编译器无法在编译期知道stack pointer的变化，必须存下base pointer来帮助恢复stack pointer。
+
+Data Access:
+* `stack`: stack pointer/base pointer-relative
+* `.bss`, `.data`, `.rodata`: rip-relative
+* `heap`: 本质dereference两次rsp-relative address，即stack上存了一个pointer
+
+`ltrace`: library trace; `strace`: system call trace
+gdb也会默认加载PIE elf到固定地址，但具体是哪个地址取决于版本。在知道默认的base后，可以在gdb init文件中加入`$base`，这样在gdb script中设置bp只需要`b *($base + offset)`
+
+Timeless debugging: record, rewind, replay。相关工具有gdb自带的record-replay，`rr`(mozilla的高性能工具)，`qira`(专注于RE的timeless debugger)
+
+PyGhidra: 用Python和Ghidra丝滑交互，看起来非常适合LLM操作。
+
+接下来又需要暂停三天，准备一下下周一的面试。
+
