@@ -1104,3 +1104,125 @@ PyGhidra: 用Python和Ghidra丝滑交互，看起来非常适合LLM操作。
 
 接下来又需要暂停三天，准备一下下周一的面试。
 
+### Day 21.1
+随便学了一点5G comm，为了准备面试
+
+信息传递的本质，将信息变成信号，通过一个channel传递。在这里，信号以EM wave呈现。具体来说，是EM wave的*变化*而不是wave的存在本身。一个电磁波拥有: amplitude, frequency, 和phase。将信息encode成EM wave的变化的过程就是modulation. 
+* AM: amplitude modulation
+* FM: frequency modulation
+
+在signal processing的课中我们学过，antenna lengths需要在$\lambda/10$以上来达到比较好的传输效果。对于5G因为频率更高，antenna的长度需求也就减少了。
+我们知道，电磁波所携带的信息来源于电场和磁场在一个区域内的变化。也就是说，在time-domain，我们必须将一个symbol(symbol即单个transmission state，可以是一个或多个bits)维持一小段时间，才能鉴别出其所携带的信息。Time-Frequency Uncertainty Principle (Gabor Limit)告诉我们($\sigma$表示标准差，$\sigma_t$即在time-domain的扩展宽度的标准差)，
+$$
+\sigma_t\sigma_f \geq \frac{1}{4\pi}
+$$
+
+或者近似来说$\Delta t \Delta f \geq 1$
+
+因此我们知道，可用的bandwidth (这里指的是 频段的宽度，不是一般说的网络传输上的带宽，尽管两者有联系)越大，理想情况中信息的传输速率就更大。
+
+我们的目标是把bit转化为waveform，这个过程就需要digital modulation。
+最简单的，直接用$\cos(2\pi f_ct)$代表 0, 用$-\cos(2\pi f_c t)$代表1。这个就是BPSK (binary phase-shift keying)。
+我们知道电磁波在空间中传递，phase随着传播的时间(距离)变化，因此phase很难直接利用。解决办法有用DPSK (differential phase-shifting keying)，即计算和上一次的偏差，但误差仍然很大。更modern的系统会在接收端利用PLL(phase-locked loop)，强行建立一个和发射端同频同phase的基准。芯片中会有专门的算法(costas loop)来校准。
+还有一个常见的基于phase的modulation是QPSK (Quadrature phase-shift keying)，即用分成4种phase，而不是BPSK中的两种。
+
+I/Q representation(in-phase and quadrature): 即使用$s = I+jQ$的形式表示。也叫complex baseband representation
+Constellation: 即把I画在x轴，Q画在y轴上。有$n$个点，就是$n$-QAM (quadrature amplitude modulation)。也就是说，在IQ的表示下，每个symbol一共有$n$个状态，更大的$n$代表着单个symbol能传输更多信息。但$n$越大，不同的点就越靠近，也就是更容易出现error，对noise会更加sensitive。
+
+SNR: signal-to-noise ratio，信噪比。SNR决定了我们可以用什么样的modulation。一个距离基站很近的设备，SNR很高，就可以用dense modulation，而一个离得很远的设备，SNR很低，那么就要用QPSK或者更sparse的modulation
+Shannon's theorem: 一个理想的channel理论的capacity大约是
+$$
+B\log_2 (1+SNR)
+$$
+
+$B$为bandwidth。但在现实中，信号会收到各种界面反射的影响，即multipath propagation。不同的路径的noise进行叠加，二次反射。这会造成一个问题，就是如果symbol变化很快，那么下一个symbol可能会被上一个symbol的echo影响。但是，我们可以同时用很多个并行的stream，每个stream单独都用更低的传输速率。比如本来是100MHz，那么每个symbol持续时间只有$1/100MHz = 10ns$(recall: $\Delta t\Delta f\geq 1$)，但如果切成1000个并行的stream，那么单个stream每个symbol的时间就被拉长了，这可以减少回声的影响。再次基础之上可以增加CP(cyclic prefix)，即一个小的保护间隔，不管上一个symbol的回声如何干扰，都只有这个保护间隔之内收到影响，那么直接丢弃这一部分就可以了。
+
+OFDM: Orthogonal frequency-division multiplexing, 指的就是上面这个idea。加上cyclic prefix就是CP-OFDM
+* frequency-division: 用很多小的频段(subcarrier)去传输
+* multiplexing: 并行传输
+* orthogonal: 每个subcarrier是一个sinc(time-domain中为square)。这解决了传统频分中需要留出guard band的问题，因为相邻的两个subcarrier可以随意交叉，但仍然能被接受端区分开。由于sinc的特性，一个subcarrier的峰值正是其他subcarrier的零点，因此可以做到zero ICI (inter-carrier interference)
+
+FT, DFT, FFT, IFFT: FT是连续的，DFT相当于在时间和频率上都变成离散的采样，FFT和我们在快速多项式乘法(快速整数乘法)的算法中本质是完全一样的。
+一个有趣的点: 物理通道上的multipath echo，对于接受端来说，实际上就是一个time domain的convolution (intuiton: 从远到近每个距离都会产生一条反射的路径)。也就是说，在frequency domain，这个multipath带来的效应直接退化成了乘法。也就是$Y_k = H_k X_k + N_k$. 忽略noise的话，直接计算$Y_k / H_k$就可以获得最初发送的symbol。$H_k$的获得来源于发送方周期性发出一些双方约定好已知的信号(pilots)，这样接收方可以用之来校准
+
+在OFDM的基础上，我们可以将时间和频率画出一个二维图
+```
+frequency
+  ^
+  |
+f8| [] [] [] [] [] []
+f7| [] [] [] [] [] []
+f6| [] [] [] [] [] []
+f5| [] [] [] [] [] []
+f4| [] [] [] [] [] []
+f3| [] [] [] [] [] []
+f2| [] [] [] [] [] []
+f1| [] [] [] [] [] []
+  +------------------> time
+```
+每个时刻，都会有不同的频段可以使用。也就是，所有的小方格就是我们的可用资源。
+OFDMA(Orthogonal frequency-division multiple access)就是用来将上面这些资源分配给不同用户的方式。(其实就是把频分和时分结合起来。)
+
+5G就是基于上述基础开发的。5G radio interface即5G NR (new radio)，5G标准由3GPP (3rd generation partnership project)开发。
+
+和早期OFDM系统不同，5G NR允许多个numerologies (即subcarrier spacing和symbol timing等的选择)。一般可以选用的spacing是$15\times 2^{\mu} kHz$。如果希望latency尽可能小，会选用short symbols (即大的frequency)。不同的spacing有不同的应用场景。
+对于5G的frequency，有两个标准: FR1, FR2(frequency range)。FR1覆盖大概410MHz，从7.125GHz开始; FR2从24.25GHz开始。高频率的部分也被称为毫米波(millimeter wave, 注意波长就是光速除以频率)。
+低频: 传播更远，穿墙性能更好，衍射(diffraction)绕过障碍物更好; 缺点是更难获取连续的大bandwidth(总的频率数量更少)
+高频: 大bandwidth, 更短波长意味着antenna阵列可以更加compact; 缺点就是低频的反面
+
+能量随距离的平方衰减，而高频段传播(穿墙和绕过障碍物)更困难。5G对此的解决方案就是，加更多的antenna。不同的antenna意味着有不同路径，也就是，可以通过操作不同antenna上的信号，让他们部分cancel掉，部分被增强，最终形成的效果就是某些方向的信号得到增强。这被称为beamforming。
+在beamforming之前还有一个相关技术是MIMO (multiple-input multiple output)，这里input是发送方antenna，output是接受方antenna。MIMO如前面所述，可以被用来加强reliability或者信号强度，同时也可以用来spatial multiplexing，即如果有充足的不同的空间路径，不同antenna可以同时传输不同信号
+在MIMO的基础上，如果我们调整不同antenna的phase，让他们在同一方向同时到达，
+
+Massive MIMO: 5G基站可以用大量的antenna阵列。在很短的波长下，很多小的antenna可以被装到一个panel中。
+
+对于错误处理，5G使用LDPC coding (low-density parity-check)，即创造很多parity关系，便于感知是否有bit出现错误。对于control info，5G使用Polar codes。然后error detection，这个就很熟悉了。一个常见的mechanism就是CRC(cyclic redundancy check)，在很多地方都很常用。
+decode失败时可以要求重传(retransmission)，现代的系统用HARQ (hybrid automatic repeat request), hybrid即retransmission和ecc(error correct-code)是一起工作的。receiver可能需要保留上一次传输的部分信息，这样重传的时候只需要传缺少的
+
+不同的channel除了modulation不同，用的coding scheme也不同。一个好的channel可以用dense的modulation加上很高的code rate，而差的channel则需要更robust的modulation加上更多redundancy。即需要根据网络环境选择MCS (modulation and coding scheme)
+
+Downlink和uplink，即下载和上传，两者可以通过FDD (frequency division duplex)共存，一个频段用于下载另一个用于上传; 或者TDD (time-division duplex)，部分时间片用于下载，部分用于上传
+
+手机和基站最初建立连接的过程。核心结构是SSB (synchronization signal block), 帮助手机获得广播的信息; 在这个过程中有PSS (primary synchronization signal)和SSS (secondary synchronization signal)，用来提供不同信息。最基本的广播信息通过PBCH (physical broadcast channel)传播。所以，简单来说就是手机扫描频率，找到sync signal，对其后，identify cell，然后听广播，要求access。
+
+手机和基站需要一个类似握手的缓解，用一个channel PRACH (physical random access channel)，即手机发出请求，基站回信用的channel。
+
+由于control info和data需要分开，有不同的channel:
+* PDCCH: physical downlink control channel
+* PDSCH: physical donwlink shared channel
+* PUCCH: physical uplink control channel
+* PUCSH: physical uplink shared channel
+
+资源以PRB (physical resource block)传输。
+
+移动过程中会产生Dopller effect，在快速移动中更是需要持续的tracking，不然beamforming就不好用了
+
+CA (carrier aggregation): 运营商有多个carrier给一个用户用，来增加bandwidth
+
+5G NR基站功能也被叫做gNB (next-generation Node B)，用来处理上述所有的东西
+用户的手机也叫做UE (user equipment)
+在radio以外，5G也有core network. radio-access部分被称作 RAN (radio access network)
+
+一些名词
+SA: Standalone NSA: non-standalone (即依赖于上一代infra)
+RRC: radio resource control
+TA: timing advanced
+PCAP: packet capture
+CoreSet Control resource set
+DCI: download link information
+RNTI: radio network temporary identifier
+Scrambling: 就是xor一个随机sequence，通过
+$$
+c_{ini} = (n_{RNTI} << 16 + n_{ID}) \mod 2^31
+$$
+
+获取。
+DMRS: Demodulation Reference Signal 
+MIB: master information block
+SIB: system information block
+USIM: universal subscriber identity module
+NAS: Non-access stratum (non-access: does not care how the device connects), above RAN
+AKA auth: Authentication and key agreement
+MAC: medium access control
+RLC: radio link control
+Search space: the time periods and locations within a CORESET where a UE must monitor for the PDCCH to decode DCI
