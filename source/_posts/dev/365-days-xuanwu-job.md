@@ -1226,3 +1226,145 @@ AKA auth: Authentication and key agreement
 MAC: medium access control
 RLC: radio link control
 Search space: the time periods and locations within a CORESET where a UE must monitor for the PDCCH to decode DCI
+
+### Day 22
+原repo提到的这个课程中的大部分内容都学习过了。这里详细了解一下SAT(Boolean Satisfiability Problem)和SMT(Satisfiability Modulo Theories)。这两者和symbolic analysis有关，进而和一些binary analysis的技巧有关。
+
+SAT是第一个被证明NP-complete的问题，因此重要。定义非常简单，给定一个有若干变量的boolean expression(即，$\{0,1\}^n\to\{0,1\}$的函数)，是否存在一组输入使输出为true。一般问题以CNF (conjunction normal form)表示。
+
+SAT solver最经典的算法是DPLL: Davis–Putnam–Logemann–Loveland
+其思想就是一个backtrack加上很多的剪枝优化。DPLL可以被延伸为CDCL: Conflict-Driven Clause Learning
+即，在backtrack过程中，学习到某些表达一定为某个值，从而降低计算量
+
+SMT相当于SAT的扩展，变量可以是其他值，不再只是boolean，仍然是类似CNF的形式，每个表达是一个对变量的约束，比如
+$$
+(x > 5)\land (x + 5 < 10) \land (z + y > 20)
+$$
+
+SMT的solver就更加复杂。首先用SAT解出boolean的解，然后check这些解，比如同时需要$x > 0$为true和$x < 0$为true，是否存在conflict，如果存在那么这一组解就不能用。
+这种在不同约束下求解可行解的方式，和linear programming有些相似。另外，这也和我们在分析data flow的时候，要进行context sensitive analysis所需要的操作类似。
+
+作为part II, 了解一下DNS加密相关的知识。笔者的母校校园网在夜间会进行DNS污染，来试图组织访问部分网站的流量。尽管这几乎没有任何效果，但这确实说明了对DNS进行劫持、污染是非常普遍的现象。而这些攻击的根源很简单，DNS本身是完全无加密的协议。任何人都可以试图进行攻击。
+
+如果希望对DNS流量加密，很容易想到类似HTTPS这样利用PKI、certificates用来建立加密连接的方式。主要有以下方式
+* RFC 7858 DNS Over TLS (DoT): 直接复用目前的PKI的setup，但需要用固定端口，并且overhead，走tcp的话更慢
+* RFC 8484 DNS Over HTTPS (DoH): 类似，并且可以复用443端口。但https的overhead也比较大，会让DNS的traffic对于管理者来说更难管理
+* RFC 9250 DNS Over QUIC (DoQ): 类似，性能更好，但QUIC本身就是比较新的protocol，部分网络环境可能对QUIC不友好，不过现在感觉整体还可以
+* RFC 9230 Oblivious DoH: 这个比较有意思，有点类似tor的想法，加一个relay，relay只能看到source而看不到需要查询的domain，而resolver只能看到domain而看不到source。坏处就是更大更大的overhead和infra的要求
+* DNSCrypt: 一个没有被RFC收录的protocol。建立了另外一套类似于tls的证书机制，性能上比较好，但没有默认支持，想用的话得依赖其他工具
+
+还有一个相关的是DNSSEC (DNS Security Extension)，简单来说就是DNS的回复需要被resolver签名，然后其他人可以verify。这其实已经可以保护poisoning和MITM了，但并不提供加密。
+
+**然而**, 上面**所有**的协议，都没有得到非常广泛的应用。这一方面是因为backward compatability的问题(但我相信这是可以解决的)，以及很多监管方并不希望DNS得到加密，因为他们需要利用DNS的流量来进行监控。不过整体来说，DoT和DoH的应用相对应该比较多了。在chrome的security setting中，我们可以打开`Use secure DNS`。`curl`可以用`--doh-url https://cloudflare-dns.com/dns-query`指定一个resolver并且使用DoH。当然，前提是OS有对DoH/DoT的支持。如果不知道自己是否在使用secure DNS，可以直接`sudo tcpdump -ni any 'port 53 or port 853'`后访问网站，如果出现port53的查询，则说明没有启用。
+
+在X上找到了和proxy，gfw相关的开源书，从实操、理论、到一些原理的讲解都有。还是比较有意思的：https://hoochanlon.github.io/fq-book
+
+
+随便记录一点:
+TUN: 即TUNnel，在layer 3工作，直接处理IP packets
+TAP: 在layer 2工作的device，相当于virtual ethernet adaptor
+
+TUN常被用于VPN，一个VPN软件可以创建一个TUN device，在IP layer就接管数据。
+TAP更多用于VM，即需要模拟出好像真的直接连到ethernet一样的行为
+SOCKS(RFC 1928 SOCKS5): 通过proxy转发data的protocol，工作于application layer和transport layer之间。
+
+一些发现: 正好阅读到关于搜索引擎的章节，发现原作者所提到的[ask](https://www.ask.com/)已经在2026年5月关闭了。不知为何有些悲伤，引用reddit上的一条评论
+> I remember when Google first launched my mom would always debate between using Ask Jeeves or the new Google. The internet was so much more innocent back then filled by information and curiosity
+
+在互联网上有着太多我们不知道的事情。曾经热门的应用、软件，也许用不了多久就会无人问津，连关闭时都只会有人说，啊，原来它还活着。
+另外，看到即使在google和bing事实上垄断了搜索引擎这一领域后，仍然有这么多小公司愿意做搜索业务，甚至相互合作，感觉还挺有趣的。
+
+IPFS: 去中心化文件存储
+https://www.kawabangga.com/posts/2226 对去中心化网络的信仰
+虽然去中心化会带来很多问题，但，我也愿意相信，那才是互联网应该有的样子。
+
+IPFS的motivation自然是去中心化。每个文件会有一个CID (Content Identifier), 由文件的hash加上metadata组成。大文件被分割成block，通过一个merkle-DAG连接起来。
+假设我们希望下载一个文件，那么
+* 首先需要找到一个拥有这个文件的人。IPFS通过Kademlia DHT (distributed hash table)来查询
+* 从peer获取blocks再组装
+
+我个人觉得对于discentralized protocol，最值得关心的是具体依赖于哪些centralized services。对于IPFS来说，和大部分p2p protocol一样，仍然是需要有一些bootstrap nodes。在实际部署中，仍然可能使用一些centralized的方式来改善连接的稳定性。
+
+IPFS仍然有其他p2p也有的问题，即受限于网络环境。在strict NAT + 无ipv6的环境下很难工作。discovery也是一个问题。以及，即使CID有效，但不一定有人正在上传这个文件。
+
+### Day 23
+Deobfuscation
+我们直接从slides开始学习: https://github.com/malrev/ABD/blob/master/Advanced-Binary-Deobfuscation.pdf
+
+所谓obfuscation即让一个程序在功能不变的前提下，变得更难从中获取信息。
+https://mediatum.ub.tum.de/doc/1367533/1367533.pdf 中提到一共有31中obfuscation techniques，当然随着时间变化，现在应该有更多。大部分技巧都是差不多的idea，比如
+* 做一些没用的事，比如加garbage(永远执行但没用的code)，加deadcode(从不执行的code)
+* 改变syntax，替换一些等价instruction，加入encoding，给所有常量xor一些东西
+* 改变semantcis，比如 Opaque Predicate(即一个数学上永远为true/false的表达式，但故意留到runtime计算)，control flow flattening(这个之前提过了)，virtualization (也提过了)
+
+opaque predicate还是比较有意思的。可以用简单的恒等式，甚至可以用collatz猜想，总之就是加一个看起来可能有不同结果但实际上永远只会执行其中一条path的branch
+Virtualization即定义bytecode。还有一些其他技巧，比如用多个实际语义相同的handler，避免用centralized dispatcher而是把dispatch分散到各个地方。
+Control flow flattening就类似于，本来是
+```c
+int main() {
+    printf("Hello, ");
+    printf("world!\n");
+    return 0;
+}
+```
+现在展开成
+```c
+int main() {
+    int next = 0;
+    while (1) {
+        switch (next) {
+            case 0: printf("Hello, "); next = 1; break;
+            case 1: printf("world!\n"); return 0;
+        }
+    }
+}
+```
+
+工具：O-LLVM(https://github.com/obfuscator-llvm/obfuscator/wiki): obfuscate LLVM-IR，在optimization pass中工作
+Tigress: C-source的obfuscator
+
+Deobfuscation techniques: 即和obfuscation相反，我们希望去除redundant的code，让恢复出的code尽可能readable
+* 做无用的东西: 进行liveness analysis，消除deadcode/garbage code
+* 改变syntax: dataflow analysis，恢复literal的值
+* Opaque predicate: symbolic execution和equivalence checking; Virtualization: VMHunt; Control flow flattening: graph pattern matching
+
+IR一般是SSA形式(static single assignment)，参考https://llvm.org/docs/LangRef.html
+Binary analysis tool的基本设计思路都差不多，从binary获取IR，然后/同时获取CFG
+Binary analysis backend:
+```text
+binary -> (disassembler) -> disassembly -> (lifter) -> IR -> emulator
+                                                          -> type inference
+                                                          -> CFG recovery
+                                                          -> Dataflow analysis
+                                                          -> decompiler
+                                                          -> (IR translator) -> SMT queries 
+```
+
+Dataflow analysis: 
+* Reachable definition analysis: 当到达程序的某一个点时，使用的变量是在哪里定义的。用来constant propagation和folding，以及expression等价变形
+* liveness analysis: 分析在程序到达一个点时，继续往后走一个变量是否会被用到。用来消除deadcode
+
+这两个技巧在compiler优化中也有使用。某种一样上说，compiler和binary analysis tool很像。compiler从source获得IP，然后分析，优化。binary analysis tool从binary获取IR，然后分析优化。而obfuscation其实就是optimization的对立面
+
+如前面所介绍，SAT就是satisfiability problem，即判定一个boolean expression是否satisfiable。而SMT就是SAT加上theories (包含arithmetic，bitvector，array之类的)。variables被看作bitvectors。
+SMT solver被用于symbolic execution, equivalence checking和program synthesis
+比如，在symbolic execution中，input最初以symbol表示，而在执行过程中增加各种path constraint，最终通过SMT solver获得一个能够来到这个点的input value。如果遇到opaque predicate，我们就会发现不管条件，这个branch永远是true/false
+Symbolic execution有很多问题，一个是path explosion，另外是攻击者可以尝试搞一些SMT solver解决不了的问题，比如利用collatz conjecture，证明它永远为true就相当于证明collatz conjecture，这对于SMT solver来说显然是不可能的
+
+解决path explosion的一个方案是abstract interpretation，比如不关心具体的input，只关心是正还是负
+用途仍然是opaque predicate detection, 还有VSA (Value-set analysis), 即把type info作为abstract domain
+
+Ranger divider: 通过path explosion反制symbolic execution的手段，即故意增加一个看起来不同，实际上一模一样的branch
+
+Equivalence checking: 检查两段code是否有完全相同的行为。基于symbolic execution。用于opaque predicate detection，也可以用来检测N-days vulnerability
+
+VM deobfuscation:
+* Locate: 找到VMEntry，handlers，VMExit
+* Extract: dump handlers
+* Simplify: 根据bytecode的设计规律进行简化
+
+VMHunt是一种用来VM deobfuscation的手段。基于动态分析 + 一些heuristics + symbolic execution。捕捉Host和VM之间的context switch
+
+Program synthesis: 从测试生成program，即根据test case推断input和output之间的关系(e.g. excel)。很显然这个办法有很多局限性，testcase无法用来唯一确定一个函数
+
+Control flow flattening可以通过Graph pattern matching和symbolic execution解决。graph pattern matching简单来说就是，根据常见的flattening的pattern，追踪哪些代码block被执行了，然后恢复。但反过来说，进行obfuscation的一方也可以利用已知的这些会被检查的pattern，进行进一部分hardening
