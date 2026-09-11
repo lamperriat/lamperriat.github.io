@@ -1368,3 +1368,27 @@ VMHunt是一种用来VM deobfuscation的手段。基于动态分析 + 一些heur
 Program synthesis: 从测试生成program，即根据test case推断input和output之间的关系(e.g. excel)。很显然这个办法有很多局限性，testcase无法用来唯一确定一个函数
 
 Control flow flattening可以通过Graph pattern matching和symbolic execution解决。graph pattern matching简单来说就是，根据常见的flattening的pattern，追踪哪些代码block被执行了，然后恢复。但反过来说，进行obfuscation的一方也可以利用已知的这些会被检查的pattern，进行进一部分hardening
+
+### Day 23.1
+插入一段科普性质的，与GFW和互联网相关的笔记。
+
+DNS
+* DNS劫持(hijacking): 篡改DNS服务器上的数据，返回一个错误的查询结果。可以通过手动修改DNS来防止劫持。
+* DNS污染(欺骗/投毒, poisoning): 非secure DNS查询基于UDP，没有任何保护，任何人都可以篡改，或伪装返回的数据。GFW的手段之一就是进行DNS污染。
+* 如果直接把目标ip放入host文件，因为相当于本地就解析成目标ip了，不会收到DNS污染的影响。然而大部分情况GFW的封锁措施远不止于DNS污染，所以还是没啥用
+
+CDN: 大型站点会用CDN加速，把域名解析到离用户最近的公网ip。而一个公网ip可能实际上host了多个实际的网站
+* SNI (server name indication): 帮助CDN服务器知道，用户在访问这个ip的时候是希望访问具体哪个站点。SNI信息并不加密，会被GFW识别
+* TCP reset attack: GFW识别SNI后，可以发起TCP reset attack，即故意发送一个伪造的RST来让客户端获得`ERR_CONNECTION_RESET`，从而无法正常访问。IPSec或者其他保护措施可以防止该攻击。
+* Domain fronting: 在TLS handshake的时候用一个合法的domain来规避审查，在TLS handshake结束后，在加密的保护下再发送真正的target(放在http的`host` header中)。要求比较高，需要有一个CDN或者类似的shared reverse proxy，也就是对于server端来说，两个domain必须都是合法的，只是其中一个会被审查的firewall block掉，另外一个会放行。这个技巧在现在已经不太好用了，很多CDN provider现在强制要求实际访问的和handshake的destination一致。
+
+加两条关联的:
+TLS ECH (encrypted client hello): ESNI (encrypted SNI)的后继，可以保护SNI不被看到。需要客户端和服务器都支持。
+REALITY: Xray/XTLS生态系统中的一个协议。用Xray的朋友们应该很熟悉，REALITY会要求configure一个看起来合法的SNI，比如`www.sony.com`，用来遮盖我们和proxy的连接。如果有censor发现，这个ip看起来和SNI对不上，然后直接试图连接到这个ip，我们的server端会*直接把流量转发给真的server*。也就是，对于REALITY server，假设我们config了我们的camouflage(`www.sony.com`), server会识别进来的连接，如果auth success, 即连接就是一个合法的REALITY client，那么就正常继续; 如果auth fail，也就是有可能censor在试图probing，server就把流量转发给`www.sony.com`，然后censor就会觉得这个ip的确是`www.sony.com`，以此规避审查。
+
+关于VPN和proxy，VPN更加底层一点，通过OS的接口直接虚拟出一张网卡，然后后续的通讯都会通过虚拟网卡收发。换言之，VPN可以对所有收发的数据进行加工。而我们通常所说的proxy一般在更高层级工作，甚至直接在应用层转发流量，不过两者的效果是类似的。如果打开了VPN，所有联网程序都会经过虚拟网卡; 而proxy则是自己设置哪些流量需要被转发。
+* `shadowsocks` (ss): 大体上就是基于ssh tunnel。ss-local和ss-server加密通讯，经过GFW时就是常规的TCP packets
+* PAC (proxy auto-config): 浏览器中自动判断应该直连还是走代理
+
+有意思的项目: https://github.com/hellozeronet/zeronet
+但似乎很久没更新了
