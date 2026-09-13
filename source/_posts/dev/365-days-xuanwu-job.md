@@ -1420,3 +1420,25 @@ Transform的granularity可以大致分为
 Obfuscation可以是static也可以是dynamic。dynamic即动态patch之后执行的指令，这要求有page是W+X的，不太安全，并且overhead很高。因此一般只有malware会用。
 从obfuscation的目标来看，可以被分为data (const+variable)和code(logic+abstraction)。
 attacker RE一个软件一般是希望获取源码, 数据, metadata (如杀毒软件通过metadata判定是否suspicious), 某个位置的一段代码的功能 (或 实现某一个功能的代码的位置)
+
+### Day 26
+https://users.encs.concordia.ca/~youssef/Publications/Papers/AsiaCCS2017.pdf
+
+这篇paper的BinSequence的目的是对binary code进行similarity search。整体和对source code的similarity search工具(比如 用来查作弊的MOSS, Measure of Source Similarity)有些类似。
+
+比较的基础是CFG。流程是先disassemble，然后normalize (对指令normalize以便于比较)，建立一个数据库，然后filter(删掉可能性很低的，只保留高可能性的candidate，通过比较basic block数量以及一些features)，match。
+实现上:
+* 用LCS (longest common subsequence)比较basic block相似度
+* dfs探索CFG的最长path
+* 通过类似LCS的bfs+dp来探索candidate中path和目标的最长path的匹配度
+
+Filter实现:
+* Basic block的matching必须超过一个threshold才保留
+* 计算jaccard similarity (intersection over union)，同样设置一个threshold
+* 用minhash加速计算 (有点熟悉，在数据挖掘课学过，但感觉有点过时了)
+
+Ghidra BSim: function-level fingerprinting. 
+
+流程比较类似: disassemble，生成P code (ghidra自己的IR)，normalize然后获得control flow info，提取feature变成feature vector, LSH (local-sensitive hashing)加上cosine similarity
+
+可以发现上述两者都是用的传统data mining技巧。实际上也有研究用embedding实现类似功能的，而且很多。embedding的好处是能对语义有更精确的理解，而坏处自然是dl特有的可解释性不太好。也许将两者结合一下，作为ghidra的插件，在pcode上进行训练，把embedding的similarity score和BSim的分数结合，或许会有不错的结果？
