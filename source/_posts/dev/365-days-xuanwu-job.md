@@ -1392,3 +1392,31 @@ REALITY: Xray/XTLS生态系统中的一个协议。用Xray的朋友们应该很�
 
 有意思的项目: https://github.com/hellozeronet/zeronet
 但似乎很久没更新了
+
+### Day 24 & 25
+主要是下面两篇paper
+https://mediatum.ub.tum.de/doc/1367533/file.pdf
+https://link.springer.com/article/10.1186/s42400-020-00049-3
+
+paper和之前学过的有重叠，但paper里的讲述更加学术一点
+
+MATE (man-at-the-end) attackers: 即所有可能的恶意的终端用户
+四种保护技术:
+* software-based obfuscation
+* encryption
+* server-side execution
+* trusted native code
+
+不同的obfuscation technique可能作用在不同的abstraction level上。比如，对于前端，我们需要做的是JS source code level上的obfuscation，而对于native program则更多是binary level的。
+
+Transform的granularity可以大致分为
+* instruction level
+* basic block level. basic block = a list of sequential instructions that have a single entry point and end in a branch
+* loop level
+* function level
+* program level
+* system level
+
+Obfuscation可以是static也可以是dynamic。dynamic即动态patch之后执行的指令，这要求有page是W+X的，不太安全，并且overhead很高。因此一般只有malware会用。
+从obfuscation的目标来看，可以被分为data (const+variable)和code(logic+abstraction)。
+attacker RE一个软件一般是希望获取源码, 数据, metadata (如杀毒软件通过metadata判定是否suspicious), 某个位置的一段代码的功能 (或 实现某一个功能的代码的位置)
