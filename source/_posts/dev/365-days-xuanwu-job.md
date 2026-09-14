@@ -1442,3 +1442,128 @@ Ghidra BSim: function-level fingerprinting.
 流程比较类似: disassemble，生成P code (ghidra自己的IR)，normalize然后获得control flow info，提取feature变成feature vector, LSH (local-sensitive hashing)加上cosine similarity
 
 可以发现上述两者都是用的传统data mining技巧。实际上也有研究用embedding实现类似功能的，而且很多。embedding的好处是能对语义有更精确的理解，而坏处自然是dl特有的可解释性不太好。也许将两者结合一下，作为ghidra的插件，在pcode上进行训练，把embedding的similarity score和BSim的分数结合，或许会有不错的结果？
+
+### Day 27
+原paper的geneDiff基本就是我之前提到的使用embedding解决该问题的延伸。但这篇paper有些远古了。我们今天看一点新的。这个领域新的paper怎么都是国人作者，感觉不是很妙，可能很容易水paper
+* [Ex2Vec: Enhancing assembly code semantics with end-to-end execution-aware embeddings](https://www.sciencedirect.com/science/article/abs/pii/S0893608025003855): 该paper提出，之前的training方法基本都是通过MLM (masked anguage modeling), 这样得到的vector representation并不能很好表达语义(MLM在现在的大模型训练中也已经不用了，一般使用Causal language modeling, CLM, 即单项预测下一个词)。作者提出，他们通过训练模型学习指令对于register states的影响来让模型学习更多语义。
+* [Learning Approximate Execution Semantics From Traces for Binary Function Similarity](cs.columbia.edu/~junfeng/papers/trex): 这篇比较早，走的是另外一条路线。用function的forced-execution traces (即在runtime强制修改control flow)去pretrain，然后再finetune让模型理解语义
+* [Instruction Alignment for Binary Code Representation Learning](https://arxiv.org/abs/2608.11766): 利用编译器生成的debug info去学习。总感觉这篇有点在水paper的感觉。
+* [Learning Cross-Architecture Instruction Embeddings for Binary Code Analysis in Low-Resource Architectures](https://aclanthology.org/2024.findings-naacl.84/): 希望能把不同ISA的instructions丢到同一个embedding space里。听起来可行，但既然有IR，感觉很难说价值有多大。
+
+Ghidra PCode:
+Test program:
+```cpp
+__attribute__((noinline))
+int compute(int a, int b) {
+    int x = a + b + 33276;
+    int y = x * 64;
+
+    if (y > 20)
+        y -= 5;
+    else
+        y += 7;
+
+
+    return y / 8;
+}
+```
+
+编译
+```sh
+clang++ -O0 -g -o test_x86_O0 test.cpp
+clang++ -O1 -g -o test_x86_O1 test.cpp
+clang++ -O2 -g -o test_x86_O2 test.cpp
+# object code is enough; no need to deal with linker err
+clang++ --target=aarch64-linux-gnu -O0 -g -c test.cpp -o test_arm_O0.o
+clang++ --target=aarch64-linux-gnu -O1 -g -c test.cpp -o test_arm_O1.o
+clang++ --target=aarch64-linux-gnu -O2 -g -c test.cpp -o test_arm_O2.o
+```
+
+Ghidra有raw pcode 和 high pcode. 
+* raw: raw pcode from instructions
+* high: 优化后的
+
+比如说, 对于 `y -= 5`, 编译为 `SUB EAX,0x5` (x86) 或 `subs w8,w8,#0x5` (aarch64). 
+x86上，raw PCode是
+```
+10115e  SUB   EAX,0x5
+    CF = INT_LESS EAX, 5:4
+    OF = INT_SBORROW EAX, 5:4
+    EAX = INT_SUB EAX, 5:4
+    RAX = INT_ZEXT EAX
+    SF = INT_SLESS EAX, 0:4
+    ZF = INT_EQUAL EAX, 0:4
+    $U58300:4 = INT_AND EAX, 0xff
+    $U58400:1 = POPCOUNT $U58300:4
+    $U58500:1 = INT_AND $U58400:1
+    PF = INT_EQUAL $U58500:1, 0:1
+```
+
+这是因为x86会在计算`sub`的时候设置一大堆flags 
+对aarch64，PCode是
+```
+100044  subs  w8,w8,#0x5
+    $U7a500:4 = COPY 5:4
+    tmpCY = INT_LESSEQUAL $U7a500
+    tmpOV = INT_SBORROW w8, $U7a5
+    $U7a700:4 = INT_SUB w8, $U7a5
+    tmpNG = INT_SLESS $U7a700:4, 
+    tmpZR = INT_EQUAL $U7a700:4, 
+    x8 = INT_ZEXT $U7a700:4
+    NG = COPY tmpNG
+    ZR = COPY tmpZR
+    CY = COPY tmpCY
+    OV = COPY tmpOV
+```
+
+实际上也差不多。虽然flags被用到ie，但O0下编译器仍然生成了`subs`。在O1或更高优化下，编译器会直接把`subs`干掉，直接准备好会用到的constants。在x86/64和aarch64上都是如此
+x86:
+```
+00101130           8d 0c 37                 LEA ECX,[RDI + RSI*0x1]
+00101133           c1 e1 06                 SHL ECX,0x6
+00101136           8d 81 00 7f 20 00        LEA EAX,[RCX + 0x207f00]
+0010113c           8d 91 07 7f 20 00        LEA EDX,[RCX + 0x207f07]
+00101142           81 c1 fb 7e 20 00        ADD ECX,0x207efb
+00101148           83 f8 15                 CMP EAX,0x15
+0010114b           0f 4c ca                 CMOVL ECX,EDX
+0010114e           8d 41 07                 LEA EAX,[RCX + 0x7]
+00101151           85 c9                    TEST ECX,ECX
+00101153           0f 49 c1                 CMOVNS EAX,ECX
+00101156           c1 f8 03                 SAR EAX,0x3
+00101159           c3                       RET
+```
+
+回到O0，尽管x86和aarch64的raw PCode看起来很不一样，他们的high PCode还是很相似的
+x86:
+```
+0010113d [20] (register, 0x0, 4) INT_ADD (register, 0x38, 4) , (register, 0x30, 4)
+00101140 [30] (register, 0x0, 4) INT_ADD (register, 0x0, 4) , (const, 0x81fc, 4)
+0010114b [47] (register, 0x0, 4) INT_MULT (register, 0x0, 4) , (const, 0x40, 4)
+00101155 [99] (unique, 0x25f00, 1) INT_SLESS (register, 0x0, 4) , (const, 0x15, 4)
+         [100]  ---  CBRANCH (ram, 0x101169, 1) , (unique, 0x25f00, 1)
+0010115e [107] (register, 0x0, 4) INT_ADD (register, 0x0, 4) , (const, 0xfffffffb, 4)
+00101164 [118]  ---  BRANCH (ram, 0x101172, 1)
+0010116c [151] (register, 0x0, 4) INT_ADD (register, 0x0, 4) , (const, 0x7, 4)
+00101172 [280] (stack, 0xffffffffffffffe8, 4) MULTIEQUAL (register, 0x0, 4) , (register, 0x0, 4)
+0010117b [132] (register, 0x0, 4) INT_SDIV (stack, 0xffffffffffffffe8, 4) , (const, 0x8, 4)
+0010117e [144]  ---  RETURN (const, 0x0, 8) , (register, 0x0, 4)
+```
+
+aarch64:
+```
+00100014 [14] (unique, 0x23d00, 4) INT_ADD (register, 0x4000, 4) , (register, 0x4008, 4)
+0010001c [22] (unique, 0x23d00, 4) INT_ADD (unique, 0x23d00, 4) , (const, 0x81fc, 4)
+00100028 [31] (unique, 0x4fc00, 4) INT_MULT (unique, 0x23d00, 4) , (const, 0x40, 4)
+00100038 [50] (unique, 0x2b00, 1) INT_SLESS (unique, 0x4fc00, 4) , (const, 0x15, 4)
+         [51]  ---  CBRANCH (ram, 0x100050, 1) , (unique, 0x2b00, 1)
+00100044 [59] (unique, 0x7a700, 4) INT_ADD (unique, 0x4fc00, 4) , (const, 0xfffffffb, 4)
+0010004c [69]  ---  BRANCH (ram, 0x100060, 1)
+00100054 [94] (unique, 0x22f00, 4) INT_ADD (unique, 0x4fc00, 4) , (const, 0x7, 4)
+0010005c [100]  ---  BRANCH (ram, 0x100060, 1)
+00100060 [167] (stack, 0xfffffffffffffff0, 4) MULTIEQUAL (unique, 0x7a700, 4) , (unique, 0x22f00, 4)
+00100068 [77] (unique, 0x6be00, 4) INT_SDIV (stack, 0xfffffffffffffff0, 4) , (const, 0x8, 4)
+00100070 [87]  ---  RETURN (const, 0x0, 8) , (register, 0x4000, 4)
+         [120] (register, 0x4000, 4) COPY (unique, 0x6be00, 4)
+```
+
+可以看到有很多相同点。这也是为什么binary similarity工具，包括ghidra的bsim，大多基于IR。IR本身是相当好的抽象，帮助剥离了ISA附带的信息。
