@@ -1573,3 +1573,30 @@ aarch64:
 准备一下考试，另外这周准备开始投实习。可能需要暂停一下。
 有点焦虑就是，感觉自己会的还是太少了。sg整体的情况并没有比国内好太多，更别说在这里是作为外国人求职。
 我发现炒股，或者广义地说，做交易，的确是非常好玩的一件事情。最重要的是，没有任何一个人有资格评判做的是对还是错，也不需要有任何人来评判。市场就是最公正的裁判。不需要别人来认可，只要自己的想法是对的，就可以得到市场的奖励。市场也是真正的talk is cheap的地方。
+
+### Day 28
+第一篇论文也是比较的古早: https://pdfs.semanticscholar.org/8587/79f77d4934ddab0552fc6817f85d2bc32926.pdf
+Idea就是用DL学习程序的features，因为obfuscation会改变CFG，会改变instructions，但是不会改变behaviors。原文的想法是从bytecode和android api的调用，学习出语义的fingerprint。用topic modelling的办法，试图让模型把obfuscated过的程序和源程序map到相似的语义表达上。很显然这个办法并不能直接recover源binary或源码，而是只能从现有的库中找到最相似/接近的。
+
+后续有类似的研究，有用GNN的，不过从今年开始基本就是清一色LLM了，感觉没什么意思。
+
+至于第二篇paper: https://xin-xia.github.io/publication/rjxb181.pdf
+这篇大部分内容在前面的binary similarity其实提过了，这篇是source code的similarity，但如之前所说，本质是一样的。都是转化为某种中间表达(IR/AST/CFG/...)，然后检测相似。
+
+### Day 29
+后面一周似乎都是similarity的研究，我可能会合并成一天，这些research都比较旧了。
+还真有研究LLM把binary->source的paper: 
+https://www.researchgate.net/publication/392651721_Binary_Code_Similarity_Detection_via_LLM-based_Source_Code_Conversion
+
+但似乎对于尤其是obfuscated过的program来说，效果并不是特别理想。
+这个领域整体的思路就是
+source/binary -> lifting+normalization -> some representation -> similarity search
+其中，大部分research work都是在representation上操作。representation的来源包括IR/DFG/AST/直接提取的features
+* 最古早的是手搓features。类似于传统数据挖掘的感觉
+* 然后是embeddings，即上DL直接学习features
+* 之后是更加好的models，以及注入其他信息，比如GNN/transformers。让模型同时学习semantics和program structure
+* contrastive learning，不再执着于让模型恢复source，而是去学习哪些source是相似的。
+* 最后是基于LLM的。LLM也可以有很多用途，比如用来提取语义，帮助representation之类的。
+
+### Day 30
+预定研究一下Playwright，这个工具很有说法
