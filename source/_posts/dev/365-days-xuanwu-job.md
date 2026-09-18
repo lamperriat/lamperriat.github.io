@@ -1599,4 +1599,16 @@ source/binary -> lifting+normalization -> some representation -> similarity sear
 * 最后是基于LLM的。LLM也可以有很多用途，比如用来提取语义，帮助representation之类的。
 
 ### Day 30
+(原repo day 32)
+https://arxiv.org/pdf/1905.02713.pdf
+
+这篇paper比较不一样。这篇注重于android上的pre-installed software的分析。
+作者首先通过crowdsource获取firmware和pre-installed files，然后不出意料地发现大部分预安装的app根本不在google play里面。至于预安装软件的来源，包括制造商，广告公司，软件公司，电信公司等等。感觉这个调查很符合我们对于android手机的刻板印象啊，厂商可以肆意地装一大堆莫名其妙的东西。
+然后研究发现，一大堆这些app还定义了自己的权限，也就是说，他们可以获得很多privileged access，而普通的play store app时不能这样的。
+然后作者用Lumen分析网络流量，发现这些app还会给外部服务发送信息。越来越符合刻板印象了。
+总结来说，作者的claims时: Android supply chain很opaque，pre-installed软件非常强大, 传统的install->approve permission的permission model并不完整。
+
+OEM privacy: Original Equipment Manufacturer. 
+
+### Day 31
 预定研究一下Playwright，这个工具很有说法
