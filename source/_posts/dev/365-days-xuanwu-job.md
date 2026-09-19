@@ -1611,4 +1611,131 @@ https://arxiv.org/pdf/1905.02713.pdf
 OEM privacy: Original Equipment Manufacturer. 
 
 ### Day 31
-预定研究一下Playwright，这个工具很有说法
+研究一下Playwright，这个工具很有说法
+
+我们用一个小实验整理一下流程：
+Goal: 从pixiv.net开始，登录并持久化，然后report我关注的用户发布的最新的小说。
+
+首先用`pip3 install playwright`安装。如果用本地浏览器的话无需执行playwright自己的浏览器安装。我直接使用本地的chrome。
+
+我们创建
+```text
+pixiv_playwright/
+├── main.py
+└── pw-profile/
+```
+
+我们把持久化profile存在`pw-profile`目录下。然后是`main.py`
+```py
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+
+PROFILE_DIR = Path(__file__).parent / "pw-profile"
+
+with sync_playwright() as p:
+    context = p.chromium.launch_persistent_context(
+        user_data_dir=PROFILE_DIR, # 持久化到pw-profile目录
+        channel="chrome", # playwright会自动找到本地的chrome
+        headless=False, # 人工操作login
+    )
+
+    page = context.pages[0] # 空的page
+    page.goto("https://www.pixiv.net/")
+    input("Press Enter...")
+    context.close()
+```
+
+然后我们等待一会儿，在弹出的浏览器窗口中登录。注意，这个chrome和我们平时使用的chrome是隔离的，因此会需要重新登录。
+登录完成后就可以关闭了，如果弹出bot检测不用管，直接关了就行。只要登录号，credentials就会被存下。
+
+然后我们手动打开pixiv的网页，看看我们需要点击的按钮是什么。也可以用playwright直接打印:
+```py
+links = page.locator("a")
+
+print(links.count())
+
+for i in range(min(links.count(), 30)):
+    link = links.nth(i)
+
+    print(
+        i,
+        link.inner_text(),
+        link.get_attribute("href")
+    )
+```
+
+这会打印出
+```
+181
+0  /
+1  /
+2  /messages.php
+3  /notify_all.php
+4 xxx(你的用户名) /users/(你的id)
+5 免费升级 pixiv Premium /premium/lead/lp/?g=anchor&i=side_menu_top&p=free_campaign
+6 51 已关注 /users/76278470/following
+7 23 粉丝 /users/76278470/followers
+8 公告查看全部 /info.php
+9 NEW小说投稿企划「写作应援Project～憧憬～」开始举办 /info.php?id=14082
+10 首页 /
+11 已关注用户的最新作品 /bookmark_new_illust.php
+...
+```
+
+值得注意的是我发现在我打开的网页中，实际需要先点击三条横线打开菜单，才会有这些link。但在我平时用的chrome中默认菜单就是打开的状态。这和浏览器打开窗口的长宽度有关，因此请自行调整。
+
+我们直接通过
+```py
+page.get_by_role("link", name="已关注用户的最新作品").click()
+```
+点击。然后进入页面后，我们在会发现每个小说的title其实都是一个link，根据格式我们可以用
+```py
+page.get_by_role("link", name="小说").click()
+novels = page.locator('a[href*="/novel/show.php"]')
+```
+找到小说，然后打印出。完整脚本:
+```py
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+
+PROFILE_DIR = Path(__file__).parent / "pw-profile"
+
+with sync_playwright() as p:
+    context = p.chromium.launch_persistent_context(
+        user_data_dir=PROFILE_DIR,
+        channel="chrome",
+        headless=False,
+    )
+    page = context.pages[0]
+
+    page.goto("https://www.pixiv.net/")
+    input("\nPress enter to continue") # 便于一步一步看网页的实时情况
+    page.get_by_role("button", name="菜单").click()
+    input("\nPress enter to continue")
+    page.get_by_role("link", name="已关注用户的最新作品").click()
+    input("\nPress enter to continue")
+    page.get_by_role("button", name="菜单").nth(1).click() # 不知道为什么会有两个菜单button，且第一个是无效的
+    input("\nPress enter to continue")
+    page.get_by_role("link", name="小说").click()
+    input("\nPress enter to continue")
+    novels = page.locator('a[href*="/novel/show.php"]')
+    novel_index = 1
+    for i in range(min(novels.count(), 10)):
+        novel = novels.nth(i)
+        title = novel.inner_text().strip()
+        if title == "": # 大概是由于多层嵌套之类的关系，每个小说的link会被捕捉两次
+            continue
+        url = novel.get_attribute("href")
+        print(f"{novel_index}-th novel has the title: {title}, available at {url}")
+        novel_index += 1
+    input("\nPress enter to continue")
+    context.close()
+```
+
+结果:
+```
+1-th novel has the title: 小説企画「執筆応援プロジェクト～憧れ～」開催, available at /novel/show.php?id=29084110
+...
+```
+
+整体来说体验非常丝滑，脚本写起来也非常简单。如果希望自己做抢票脚本之类的工具的话，playwright感觉是非常不错的。
