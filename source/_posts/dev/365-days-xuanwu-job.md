@@ -1739,3 +1739,198 @@ with sync_playwright() as p:
 ```
 
 整体来说体验非常丝滑，脚本写起来也非常简单。如果希望自己做抢票脚本之类的工具的话，playwright感觉是非常不错的。
+
+### Day 32
+原Repo Day 41
+Unicorn是一个轻量好用的模拟器。今天通过一个简单的练习来学习一下unicorn的python api。
+Goal: 我们拥有一个riskv (64b)的`.so`文件，其中暴露了一个`encrypt`函数一个`decrypt`函数，我们的目标是通过python脚本在x86的机器上直接调用这两个函数。
+
+如果想自己尝试，可以直接让ai写一段C code然后编译成so文件，然后自己玩就可以。
+
+首先我们需要通过`elftools`(`pyelftools`)读取elf文件。可以用一个class `ELFImage` wrap一下api便于使用。
+```py
+from elftools.elf.elffile import ELFFile
+PAGE_SIZE = 0x1000
+def align_down(x, a=PAGE_SIZE):
+    return x & ~(a - 1)
+
+
+def align_up(x, a=PAGE_SIZE):
+    return (x + a - 1) & ~(a - 1)
+
+
+class ElfImage:
+    def __init__(self, path, base=0x01000000):
+        self.path = Path(path)
+        self.fp = self.path.open("rb")
+        self.elf = ELFFile(self.fp)
+        if self.elf["e_machine"] != "EM_RISCV":
+            raise ValueError("not a RISC-V ELF")
+        self.base = base if self.elf["e_type"] == "ET_DYN" else 0
+
+    def runtime_addr(self, vaddr):
+        return self.base + vaddr
+
+    def load_into(self, uc):
+        segments = [
+            seg
+            for seg in self.elf.iter_segments()
+            if seg["p_type"] == "PT_LOAD"
+        ]
+
+        lowest = min(seg["p_vaddr"] for seg in segments)
+        highest = max(
+            seg["p_vaddr"] + seg["p_memsz"]
+            for seg in segments
+        )
+
+        # 内存对齐到page size
+        map_start = align_down(self.runtime_addr(lowest))
+        map_end = align_up(self.runtime_addr(highest))
+
+        # 把elf的segments映射到emulator的内存中
+        uc.mem_map(
+            map_start,
+            map_end - map_start,
+            UC_PROT_ALL # all = rwx
+        )
+
+        for seg in segments:
+            address = self.runtime_addr(seg["p_vaddr"])
+            data = seg.data()
+            if data:
+                uc.mem_write(address, data)
+
+        return map_start, map_end
+
+    def symbol(self, name):
+        # 根据名字查找对应的symbol
+        for section_name in (".dynsym", ".symtab"):
+            section = self.elf.get_section_by_name(section_name)
+            if section is None:
+                continue
+            for sym in section.iter_symbols():
+                if sym.name == name:
+                    return self.runtime_addr(
+                        sym["st_value"]
+                    )
+        raise KeyError(f"symbol not found: {name}")
+```
+
+然后，如果我们的`so`文件里的函数并不需要用到堆内存，那么就很简单，直接把stack和其他需要的内存映射一下。如果需要用到堆内存，则需要额外映射堆，并且需要hook malloc和free(或者其他被调用的堆内存分配相关函数)。比如，如果`.so`文件里调用`malloc@plt`，那我们就要在got中让这个call resolve到一个假的地址，然后再hook这个地址。也就是说，当`malloc@plt`被调用后，程序会跳到我们给的一个假地址`MALLOC_STUB`，然后我们只需要加一个code hook, 在`address == MALLOC_STUB`的时候进行malloc的emulation加上模拟函数返回即可。
+
+设置memory mapping:
+```py
+STACK_BASE = 0x40000000
+STACK_SIZE = 0x10000
+
+IO_BASE = 0x50000000
+IO_SIZE = 0x10000
+
+RETURN_PAGE = 0x60000000
+RETURN_ADDR = RETURN_PAGE
+INPUT_ADDR = IO_BASE
+OUTPUT_ADDR = IO_BASE + 0x2000
+
+def setup_memory(uc):
+    uc.mem_map(STACK_BASE, STACK_SIZE)
+    uc.mem_map(IO_BASE, IO_SIZE)
+    uc.mem_map(RETURN_PAGE, PAGE_SIZE)
+
+    # 这个RETURN_ADDR就是我们之后在`emu_start`的时候提供的`until`值
+    # 因此，我们希望最终返回到这个地址时，终止emulation
+    # 我们手动插入一个nop，来保证安全落地(即确保这个地址有一条合法指令)
+    uc.mem_write(
+        RETURN_ADDR,
+        b"\x13\x00\x00\x00" # nop for riscv
+    )
+
+    # stack从上往下，因此给的sp应该是base + size
+    # riscv要求栈地址16B-aligned，留出0x100的空间保证安全
+    # (部分环境下栈最顶端的空间可能被使用于其他用途)
+    uc.reg_write(
+        UC_RISCV_REG_SP,
+        STACK_BASE + STACK_SIZE - 0x100
+    )
+```
+
+然后根据riscv的函数调用convention，我们可以抽象一个class出来帮助函数调用
+```py
+class EmulatorWrapper:
+    def __init__(self, filename):
+        self.uc = Uc(
+            UC_ARCH_RISCV,
+            UC_MODE_RISCV64
+        )
+
+        self.image = ElfImage(filename)
+
+        self.image.load_into(self.uc)
+
+        setup_memory(self.uc)
+
+        # 找到我们要的symbols
+        self.encrypt_addr = self.image.symbol(
+            "lab_encrypt"
+        )
+
+        self.decrypt_addr = self.image.symbol(
+            "lab_decrypt"
+        )
+
+    def _run(self, address, args):
+        regs = [
+            UC_RISCV_REG_A0,
+            UC_RISCV_REG_A1,
+            UC_RISCV_REG_A2,
+        ]
+
+        # 将传参按照ABI要求写入registers
+        for reg, value in zip(regs, args):
+            self.uc.reg_write(reg, value)
+
+        self.uc.reg_write(
+            UC_RISCV_REG_RA,
+            RETURN_ADDR
+        )
+
+        self.uc.emu_start(
+            address,
+            RETURN_ADDR # 这里，until设置为RETURN_ADDR，前面提到过的
+        )
+
+        return self.uc.reg_read(
+            UC_RISCV_REG_A0 # a0是储存返回值的register
+        )
+
+    def encrypt(self, plaintext: str) -> bytes:
+        raw = plaintext.encode("utf-8") + b"\x00"
+
+        if len(raw) > 0x1000:
+            raise ValueError("input too large")
+
+        self.uc.mem_write(
+            INPUT_ADDR, # 把input写入准备好的用于input的内存
+            raw
+        )
+
+        # 返回长度。即类似于 size_t encrypt(const char* input, char* output)
+        result_len = self._run(
+            self.encrypt_addr,
+            [
+                INPUT_ADDR,
+                OUTPUT_ADDR, # 输出指针
+            ]
+        )
+
+        return bytes(
+            self.uc.mem_read(
+                OUTPUT_ADDR,
+                result_len
+            )
+        )
+    # decrypt也类似
+```
+
+非常简单。但实际的elf file，可能会有对global variable的reference，使用其他库的函数，有got和plt之类的东西，我们需要用其他手段处理，比如前面提到的hook并且给一个假地址，然后用python实现一个模拟的版本。其他的办法取决于abi中具体的relocation的类型。
+emulation的目的是用最少的环境让代码能工作。
