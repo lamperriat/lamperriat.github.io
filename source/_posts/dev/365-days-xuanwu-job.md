@@ -1934,3 +1934,15 @@ class EmulatorWrapper:
 
 非常简单。但实际的elf file，可能会有对global variable的reference，使用其他库的函数，有got和plt之类的东西，我们需要用其他手段处理，比如前面提到的hook并且给一个假地址，然后用python实现一个模拟的版本。其他的办法取决于abi中具体的relocation的类型。
 emulation的目的是用最少的环境让代码能工作。
+
+### Day 33
+因为我已经学习过go，所以直接跳到原repo day 50
+
+Syzkaller: "unsupervised coverage-guided kernel fuzzer"
+也就是fuzz test os kernel来寻找一些不太容易发现的bug。
+通过syzkaller自己的DSL定义syscall的interface
+一个testcase也被称为一个program，一个program由一系列的syscall组成，syzkaller可以知道syscall的各种argument的含义，因此可以做更加有效的fuzzing
+
+syzkaller会记录已经有的resource，比如前面打开了一个socket，那么这个socket的fd就是可用resource，后续就可能生成一条bind上去的syscall
+对已有program的mutation包括增加syscall，删掉syscall，更改argument之类的。
+`syz-manager`里有一个VM pool，对VM进行了一层抽象，因此底部可以使用各种不同的emulator/VM的实现。
