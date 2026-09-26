@@ -1946,3 +1946,16 @@ Syzkaller: "unsupervised coverage-guided kernel fuzzer"
 syzkaller会记录已经有的resource，比如前面打开了一个socket，那么这个socket的fd就是可用resource，后续就可能生成一条bind上去的syscall
 对已有program的mutation包括增加syscall，删掉syscall，更改argument之类的。
 `syz-manager`里有一个VM pool，对VM进行了一层抽象，因此底部可以使用各种不同的emulator/VM的实现。
+
+### Day 34
+原day 52
+
+今天主要了解VEX这个IR。如我们之前所学，IR的功能在于抽象掉architecture-specific的信息，从而让后续操作不用考虑具体的指令集。不同的IR本身的abstraction level也不同，有的可能保留了函数、object、typeinfo，而有的就只有最简单的运算。
+很多IR都采取了SSA的形式来简化data flow，即一个临时变量只能被用一次，不能重复赋值。
+
+VEX是一个architecture-neutral, fully typed, SSA IR。
+主要单元是IRSB (IR super block)，每个IRSB是单入口，(可能)多出口的block，对应一小段machine instructions。
+VEX中的Expression `IRExpr`只计算值不修改状态，statement `IRStmt`修改状态。也就是把纯的计算表达和会修改状态的语句分开。VEX会故意暴露出machine side effects，比如我们执行一个`sub eax ebx`，实际上会修改很多flag，这些就是side effects
+所有的registers被当作一个特殊的guest-state memory结构，也就是每个register就对应一个offset，把不同arch的register抽象掉。
+
+用于Compiler的IR和RE的IR的主要区别在于他们输入不同。对Compiler来说，是希望从一个语义很丰富的输入(e.g. source, AST)产生出高效的machine code，而RE是希望从信息很少的输入(binary)尽可能恢复更多的信息。
